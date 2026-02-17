@@ -7,6 +7,27 @@ import json
 import sys
 from typing import Any, Dict, List, Optional
 
+
+def _check_dependencies():
+    """Check if required packages are installed and exit with a clear message if not."""
+    missing = []
+    try:
+        import azure.identity  # noqa: F401
+    except ImportError:
+        missing.append("azure-identity")
+    try:
+        import PowerPlatform.Dataverse  # noqa: F401
+    except ImportError:
+        missing.append("PowerPlatform-Dataverse-Client")
+
+    if missing:
+        print(f"ERROR: Missing required packages: {', '.join(missing)}", file=sys.stderr)
+        print(f"Run: pip install {' '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
+
+
+_check_dependencies()
+
 from azure.identity import (
     AzureCliCredential,
     ChainedTokenCredential,

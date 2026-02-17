@@ -8,9 +8,20 @@ allowed-tools: Bash(python:*)
 
 Run read-only data queries against a specific Power Platform / Dataverse environment using the official Microsoft PowerPlatform Dataverse Client.
 
+## Setup
+
+First-time use — create a virtual environment and install dependencies:
+
+```bash
+cd skills/query-environment-data
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
 ## Prerequisites
 
-- Python 3.10+ with dependencies from `requirements.txt` installed (`pip install -r requirements.txt`)
+- Python 3.10+ with dependencies from `requirements.txt` installed (see Setup above)
 - Environment URL (format: `https://orgname.crm4.dynamics.com` — get from Power Platform admin center)
 - Interactive browser authentication or client secret credentials
 
