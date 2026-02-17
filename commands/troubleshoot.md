@@ -4,7 +4,7 @@ description: |
   Investigate a customer support ticket end-to-end. Gathers context from Jira, queries environment logs and data, inspects code, checks deployments, and produces structured documentation (context, investigation log, repro steps, RCA, action plan) in an ops/<ticket-id>/ folder.
 
   Usage: /troubleshoot <ticket-id>
-  Example: /troubleshoot CASE-1234
+  Example: /troubleshoot TICKET-1234
   Without a ticket ID, runs in playground mode (ops/playground/).
 agent: troubleshooter
 ---

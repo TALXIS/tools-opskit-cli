@@ -24,7 +24,7 @@ Service Desk API:   https://{instance}.atlassian.net/rest/servicedeskapi/
 POST /rest/api/3/search/jql
 Content-Type: application/json
 
-{"jql": "project = CASE", "maxResults": 50, "fields": ["summary", "status"]}
+{"jql": "project = PROJ", "maxResults": 50, "fields": ["summary", "status"]}
 ```
 
 Response is paginated with `nextPageToken`. Pass it back in subsequent requests to get the next page.
@@ -86,7 +86,7 @@ GET /rest/servicedeskapi/servicedesk?start=0&limit=50
 
 | Filter | Example |
 |--------|---------|
-| Project | `project = CASE` |
+| Project | `project = PROJ` |
 | Issue type | `issuetype = Incident` |
 | Status | `status = "In Progress"` |
 | Priority | `priority in (Critical, High)` |
@@ -117,16 +117,16 @@ ORDER BY priority ASC, updated DESC
 
 ```
 # Open incidents, newest first
-project = CASE AND issuetype = Incident AND status != Done ORDER BY created DESC
+project = PROJ AND issuetype = Incident AND status != Done ORDER BY created DESC
 
 # High priority open issues
-project = CASE AND priority in (Critical, High) AND status != Done ORDER BY priority ASC
+project = PROJ AND priority in (Critical, High) AND status != Done ORDER BY priority ASC
 
 # Recently updated
-project = CASE AND updated >= -24h ORDER BY updated DESC
+project = PROJ AND updated >= -24h ORDER BY updated DESC
 
 # Issues for a specific customer organization
-project = CASE AND organizations = "Customer Name" ORDER BY created DESC
+project = PROJ AND organizations = "Customer Name" ORDER BY created DESC
 ```
 
 ## Notes

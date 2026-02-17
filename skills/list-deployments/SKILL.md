@@ -10,8 +10,9 @@ View recent deployments and their status for customer environments.
 
 ## Prerequisites
 
-- Python with dependencies from `requirements.txt` installed
+- Python 3.10+ with dependencies installed via `bootstrap.py setup`
 - Access to deployment tracking system / Azure DevOps pipelines
+- Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py check ado` to verify readiness
 
 ## Workflow
 
@@ -23,25 +24,25 @@ View recent deployments and their status for customer environments.
 
 ```bash
 # List recent deployments for a customer
-python skills/list-deployments/scripts/list_deployments.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/list-deployments/scripts/list_deployments.py \
   --action list \
   --customer "customer-abc" \
   --top 10
 
 # List deployments for a specific environment
-python skills/list-deployments/scripts/list_deployments.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/list-deployments/scripts/list_deployments.py \
   --action list \
   --customer "customer-abc" \
   --environment "production" \
   --top 10
 
 # Get details of a specific deployment
-python skills/list-deployments/scripts/list_deployments.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/list-deployments/scripts/list_deployments.py \
   --action details \
   --deployment-id "12345"
 
 # List only failed deployments
-python skills/list-deployments/scripts/list_deployments.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/list-deployments/scripts/list_deployments.py \
   --action list \
   --customer "customer-abc" \
   --status failed

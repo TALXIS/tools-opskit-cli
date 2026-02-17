@@ -10,20 +10,36 @@ Run read-only data queries against a specific Power Platform / Dataverse environ
 
 ## Setup
 
-First-time use — create a virtual environment and install dependencies:
+First-time use — run the bootstrap script to create a virtual environment and install dependencies:
 
 ```bash
-cd skills/query-environment-data
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py setup
+```
+
+Configure a Dataverse connection:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py add-connection dataverse main
+```
+
+Set the customer environment URL in `ops/opskit.json`:
+
+```json
+{"environment_url": "https://orgname.crm4.dynamics.com"}
+```
+
+Verify readiness:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py check dataverse
 ```
 
 ## Prerequisites
 
-- Python 3.10+ with dependencies from `requirements.txt` installed (see Setup above)
-- Environment URL (format: `https://orgname.crm4.dynamics.com` — get from Power Platform admin center)
-- Interactive browser authentication or client secret credentials
+- Python 3.10+ with dependencies installed via `bootstrap.py setup`
+- Azure CLI logged in: `az login`
+- A Dataverse connection configured via `bootstrap.py add-connection dataverse <name>`
+- Environment URL in `ops/opskit.json` or passed as `--environment-url`
 
 ## Workflow
 
@@ -36,16 +52,18 @@ pip install -r requirements.txt
 
 ## Scripts
 
+> **Note:** `--environment-url` is auto-populated from `ops/opskit.json` if configured. Pass it explicitly only to override. `--interactive` defaults to true when Azure CLI is logged in.
+
 ### `list_tables.py` — List All Tables
 
 Discover what tables exist in the environment:
 
 ```bash
-python scripts/list_tables.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-data/scripts/list_tables.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive
 
 # Table format for quick scanning
-python scripts/list_tables.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-data/scripts/list_tables.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive --format table
 ```
 
@@ -58,7 +76,7 @@ Returns: `LogicalName`, `SchemaName`, `EntitySetName`, `IsCustomEntity` for each
 Get table metadata and all queryable column names:
 
 ```bash
-python scripts/get_table_info.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-data/scripts/get_table_info.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --table account
 ```
@@ -77,12 +95,12 @@ Run read-only queries using SQL or OData syntax:
 
 ```bash
 # SQL query (simplest for read-only retrieval)
-python scripts/query_dataverse.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --sql "SELECT TOP 10 name, createdon FROM account WHERE statecode = 0"
 
 # OData query with filtering and ordering
-python scripts/query_dataverse.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --table account \
   --select name createdon \
@@ -91,7 +109,7 @@ python scripts/query_dataverse.py \
   --top 10
 
 # Table output format
-python scripts/query_dataverse.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --table contact --select fullname emailaddress1 --top 5 --format table
 ```
@@ -129,7 +147,8 @@ Use `--tenant-id`, `--client-id`, and `--client-secret` for service principal au
 - **`--orderby` accepts multiple expressions** — e.g., `--orderby "createdon desc" "name asc"`.
 - **`--top` defaults to no limit** — omit it to fetch all records, or set it to limit results.
 - **Column names are lowercase** — use logical names, not display names.
-- **OData annotations** — stripped by default. Use `--include-annotations` to see formatted values (optionset labels, lookup names, etags).
+- **OData annotations** — stripped by default. Use `--include-annotations` to retain OData system annotations (etag, etc.). Note: `@OData.Community.Display.V1.FormattedValue` labels for option sets (e.g. statuscode) are not currently returned — to resolve a numeric code to its label, use `get_table_info.py --table <table>` which includes column metadata, or look up the option set in the Maker Portal.
+- **Filtering tables by name** — `list_tables.py --search <text>` filters results client-side by logical name substring.
 
 ## Important
 

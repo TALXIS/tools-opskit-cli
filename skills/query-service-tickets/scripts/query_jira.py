@@ -11,15 +11,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from _shared.jira_helpers import (
     add_output_args,
-    add_server_args,
     adf_to_text,
-    clear_credentials,
     format_output,
-    get_credentials,
     jira_request,
     search_issues_paginated,
     servicedesk_paginated,
 )
+from _shared.preflight import require_provider
 
 
 def do_search(args, email, api_token):
@@ -211,27 +209,30 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Search for open tickets in CASE project
-  %(prog)s --action search --jql "project = CASE AND status != Done ORDER BY created DESC"
+  # Search for open tickets
+  %(prog)s --action search --jql "project = PROJ AND status != Done ORDER BY created DESC"
 
   # Get details of a specific ticket
-  %(prog)s --action get --issue-key CASE-1234
+  %(prog)s --action get --issue-key PROJ-1234
 
   # Get comments on a ticket
-  %(prog)s --action get-comments --issue-key CASE-1234
+  %(prog)s --action get-comments --issue-key PROJ-1234
 
   # List all organizations
   %(prog)s --action list-organizations
 
   # List attachments on a ticket
-  %(prog)s --action list-attachments --issue-key CASE-1234
+  %(prog)s --action list-attachments --issue-key PROJ-1234
 
   # Download an attachment
   %(prog)s --action download-attachment --attachment-id 12345 --output-dir ./downloads
         """,
     )
 
-    add_server_args(parser)
+    # Optional CLI overrides (preflight provides defaults from connections.json)
+    parser.add_argument("--server", help="Jira server URL (overrides connection)")
+    parser.add_argument("--email", help="Atlassian email (overrides connection)")
+    parser.add_argument("--api-token", help="Atlassian API token (overrides connection)")
     add_output_args(parser)
 
     parser.add_argument(
@@ -248,11 +249,18 @@ Examples:
 
     args = parser.parse_args()
 
-    if args.clear_credentials:
-        clear_credentials(args.server)
-
-    email, api_token = get_credentials(args.server)
-    print(f"{email} → {args.server}", file=sys.stderr)
+    # Resolve connection (preflight validates, CLI flags override)
+    conn = require_provider("jira", cli_overrides={
+        "server": args.server,
+        "email": args.email,
+        "api_token": getattr(args, "api_token", None),
+    })
+    server = conn["server"]
+    email = conn["email"]
+    api_token = conn["api_token"]
+    # Put resolved values back on args for action functions
+    args.server = server
+    print(f"{email} → {server}", file=sys.stderr)
 
     actions = {
         "search": do_search,

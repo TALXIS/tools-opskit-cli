@@ -11,12 +11,18 @@ from typing import Any, Dict
 
 # Add skills/ to path for shared module imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from _shared.dataverse_helpers import _ensure_venv
+_ensure_venv()
+from _shared.preflight import require_provider
+
+require_provider("dataverse")
+
 from _shared.dataverse_helpers import (
     add_auth_args,
     add_output_args,
-    check_dependencies,
     create_credential,
     format_output,
+    validate_auth_args,
 )
 from _shared.flow_helpers import (
     discover_flow_api_base,
@@ -25,8 +31,6 @@ from _shared.flow_helpers import (
     resolve_environment_id,
     resolve_flow_id,
 )
-
-check_dependencies()
 
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
@@ -76,6 +80,7 @@ Examples:
     add_output_args(parser)
 
     args = parser.parse_args()
+    validate_auth_args(args)
 
     try:
         credential = create_credential(

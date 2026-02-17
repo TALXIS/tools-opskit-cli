@@ -10,20 +10,36 @@ Read and analyze various logs from a specific Power Platform / Dataverse environ
 
 ## Setup
 
-First-time use — create a virtual environment and install dependencies:
+First-time use — run the bootstrap script to create a virtual environment and install dependencies:
 
 ```bash
-cd skills/query-environment-logs
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py setup
+```
+
+Configure a Dataverse connection:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py add-connection dataverse main
+```
+
+Set the customer environment URL in `ops/opskit.json`:
+
+```json
+{"environment_url": "https://orgname.crm4.dynamics.com"}
+```
+
+Verify readiness:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py check dataverse
 ```
 
 ## Prerequisites
 
-- Python 3.10+ with dependencies from `requirements.txt` installed (see Setup above)
-- Environment URL (format: `https://orgname.crm4.dynamics.com` — get from Power Platform admin center)
-- Interactive browser authentication or client secret credentials
+- Python 3.10+ with dependencies installed via `bootstrap.py setup`
+- Azure CLI logged in: `az login`
+- A Dataverse connection configured via `bootstrap.py add-connection dataverse <name>`
+- Environment URL in `ops/opskit.json` or passed as `--environment-url`
 
 ## Workflow
 
@@ -41,38 +57,40 @@ pip install -r requirements.txt
 
 ## Scripts
 
+> **Note:** `--environment-url` is auto-populated from `ops/opskit.json` if configured. Pass it explicitly only to override. `--interactive` defaults to true when Azure CLI is logged in.
+
 ### `query_dataverse_logs.py` — Dataverse Log Queries
 
 Query log tables via Dataverse OData: flow runs, plugin traces, audit trail, system jobs.
 
 ```bash
 # Recent failed flow runs
-python scripts/query_dataverse_logs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_dataverse_logs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --log-type flow-runs --status failed --top 20
 
 # Flow runs since a date
-python scripts/query_dataverse_logs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_dataverse_logs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --log-type flow-runs --since 2025-01-01T00:00:00Z
 
 # Custom OData filter
-python scripts/query_dataverse_logs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_dataverse_logs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --log-type flow-runs --filter "status eq 'Failed' and triggertype eq 'Automated'"
 
 # Plugin trace logs
-python scripts/query_dataverse_logs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_dataverse_logs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --log-type plugin-trace --top 50
 
 # Audit entries for a specific entity
-python scripts/query_dataverse_logs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_dataverse_logs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --log-type audit --entity account --top 20
 
 # Failed system jobs
-python scripts/query_dataverse_logs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_dataverse_logs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --log-type system-jobs --status failed --top 10
 ```
@@ -92,12 +110,12 @@ List flow runs with error summaries, or get action-level detail for a specific r
 
 ```bash
 # List recent failed runs with error messages
-python scripts/query_flow_runs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_flow_runs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --flow-name my_flow --status failed --top 5
 
 # Action-level detail for a specific run
-python scripts/query_flow_runs.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/query_flow_runs.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --flow-id c655d528-0e52-ee11-be6d-00224880190f \
   --run-id 08585000000000000000000000000CU100
@@ -108,7 +126,7 @@ Without `--run-id`, lists recent runs with top-level status, trigger info, and e
 
 **Arguments:**
 - `--flow-name` or `--flow-id` (required, mutually exclusive): Flow display name or Dataverse `workflowid` GUID
-- `--run-id`: Specific run to inspect (the logic app run ID, same as `flowrun.name` in Dataverse)
+- `--run-id`: Specific run to inspect — **use the `name` field from the Dataverse `flowrun` table** (e.g., `08585000...CU100`), NOT the `flowrunid` column
 - `--status`: Filter runs by status (`failed`, `succeeded`)
 - `--top`: Maximum number of runs to list (default: 10)
 - `--format`: `json` (default) or `table`
@@ -118,7 +136,7 @@ Without `--run-id`, lists recent runs with top-level status, trigger info, and e
 Retrieve the full flow implementation to understand triggers, actions, expressions, and connections.
 
 ```bash
-python scripts/get_flow_definition.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-environment-logs/scripts/get_flow_definition.py \
   --environment-url "https://org.crm4.dynamics.com" --interactive \
   --flow-name my_flow
 ```

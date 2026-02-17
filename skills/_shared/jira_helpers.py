@@ -7,89 +7,8 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-
-# ---------------------------------------------------------------------------
-# Credential management
-# ---------------------------------------------------------------------------
-
-_CREDENTIALS_FILENAME = ".credentials.json"
-_TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens"
-
-
-def _credentials_path() -> Path:
-    """Return the path to the credentials file inside the skill folder."""
-    return Path(__file__).resolve().parents[1] / "query-service-tickets" / _CREDENTIALS_FILENAME
-
-
-def _load_credentials() -> Dict[str, Any]:
-    path = _credentials_path()
-    if path.exists():
-        with open(path, "r") as f:
-            return json.load(f)
-    return {"servers": {}}
-
-
-def _save_credentials(data: Dict[str, Any]) -> None:
-    path = _credentials_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-    # Restrict permissions to owner-only
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-
-
-def get_credentials(server: str) -> Tuple[str, str]:
-    """
-    Return (email, api_token) for the given server.
-
-    If credentials are not cached, prompts the user interactively and opens
-    the Atlassian API token page in the browser.
-    """
-    server = server.rstrip("/")
-    data = _load_credentials()
-    entry = data.get("servers", {}).get(server)
-
-    if entry and entry.get("email") and entry.get("api_token"):
-        return entry["email"], entry["api_token"]
-
-    # Interactive setup
-    print(f"No credentials found for {server}.", file=sys.stderr)
-    print("Opening Atlassian API token page in your browser...", file=sys.stderr)
-    print(f"  {_TOKEN_URL}", file=sys.stderr)
-    webbrowser.open(_TOKEN_URL)
-
-    email = input("Enter your Atlassian email: ").strip()
-    api_token = input("Paste your API token: ").strip()
-
-    if not email or not api_token:
-        print("Error: email and API token are required.", file=sys.stderr)
-        sys.exit(1)
-
-    data.setdefault("servers", {})[server] = {
-        "email": email,
-        "api_token": api_token,
-    }
-    _save_credentials(data)
-    print(f"Credentials cached at {_credentials_path()}", file=sys.stderr)
-    return email, api_token
-
-
-def clear_credentials(server: Optional[str] = None) -> None:
-    """Remove cached credentials. If server is None, remove all."""
-    data = _load_credentials()
-    if server:
-        data.get("servers", {}).pop(server.rstrip("/"), None)
-    else:
-        data["servers"] = {}
-    _save_credentials(data)
-    print("Credentials cleared.", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -365,24 +284,6 @@ def format_output(records: Any, output_format: str = "json") -> str:
 
     return str(records)
 
-
-# ---------------------------------------------------------------------------
-# Common argparse helpers
-# ---------------------------------------------------------------------------
-
-
-def add_server_args(parser) -> None:
-    """Add common server and credential arguments."""
-    parser.add_argument(
-        "--server",
-        default="https://networg.atlassian.net",
-        help="Jira server URL (default: https://networg.atlassian.net)",
-    )
-    parser.add_argument(
-        "--clear-credentials",
-        action="store_true",
-        help="Clear cached credentials and re-authenticate",
-    )
 
 
 def add_output_args(parser) -> None:

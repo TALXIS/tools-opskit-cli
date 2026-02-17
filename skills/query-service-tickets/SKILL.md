@@ -10,24 +10,33 @@ Look up customer incidents, change requests, and service requests from Jira Serv
 
 ## Setup
 
-No dependencies to install — uses only Python standard library (`urllib`, `json`, `base64`, `webbrowser`).
+No pip dependencies — uses only Python standard library. Requires Python 3.10+.
 
-Requires Python 3.10+.
+Configure a Jira connection before first use:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py add-connection jira main
+```
+
+Or verify existing configuration:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap.py check jira
+```
 
 ## Prerequisites
 
 - Python 3.10+
-- An Atlassian account with access to the target Jira instance
-- An API token (the script will guide you through creating one on first run)
+- A Jira connection configured via `bootstrap.py add-connection jira <name>` (stores server URL, email, API token)
+- Or environment variables: `JIRA_SERVER`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
 
 ## Authentication
 
-On first run, the script:
-1. Opens `https://id.atlassian.com/manage-profile/security/api-tokens` in your browser
-2. Prompts for your Atlassian email and API token
-3. Caches credentials locally at `skills/query-service-tickets/.credentials.json`
-
-Subsequent runs use cached credentials silently. Use `--clear-credentials` to reset.
+Credentials are resolved in this order:
+1. **CLI flags**: `--server`, `--email`, `--api-token`
+2. **Workspace config**: connection name in `ops/opskit.json` → `connections.json`
+3. **Global default**: default connection in `config.json` → `connections.json`
+4. **Environment variables**: `JIRA_SERVER`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
 
 ## Workflow
 
@@ -40,47 +49,47 @@ Subsequent runs use cached credentials silently. Use `--clear-credentials` to re
 ## Usage
 
 ```bash
-# Search for open tickets in CASE project (default server: networg.atlassian.net)
-python skills/query-service-tickets/scripts/query_jira.py \
+# Search for open tickets (server/credentials from connection config)
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action search \
-  --jql "project = CASE AND status != Done ORDER BY created DESC" \
+  --jql "project = PROJ AND status != Done ORDER BY created DESC" \
   --max-results 20
 
 # Get details of a specific ticket
-python skills/query-service-tickets/scripts/query_jira.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action get \
-  --issue-key "CASE-1234"
+  --issue-key "PROJ-1234"
 
 # Get comments on a ticket
-python skills/query-service-tickets/scripts/query_jira.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action get-comments \
-  --issue-key "CASE-1234"
+  --issue-key "PROJ-1234"
 
 # List all JSM organizations (customers)
-python skills/query-service-tickets/scripts/query_jira.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action list-organizations
 
 # List attachments on a ticket
-python skills/query-service-tickets/scripts/query_jira.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action list-attachments \
-  --issue-key "CASE-1234"
+  --issue-key "PROJ-1234"
 
 # Download an attachment to a specific directory
-python skills/query-service-tickets/scripts/query_jira.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action download-attachment \
   --attachment-id 12345 \
   --output-dir ./downloads
 
-# Use a different Jira instance
-python skills/query-service-tickets/scripts/query_jira.py \
+# Override connection with explicit server
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --server "https://other-instance.atlassian.net" \
   --action search \
   --jql "project = PROJ ORDER BY created DESC"
 
 # Table output format
-python skills/query-service-tickets/scripts/query_jira.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/query-service-tickets/scripts/query_jira.py \
   --action search \
-  --jql "project = CASE AND status != Done" \
+  --jql "project = PROJ AND status != Done" \
   --format table
 ```
 
@@ -97,28 +106,28 @@ python skills/query-service-tickets/scripts/query_jira.py \
 
 ### Common JQL Patterns
 
-- Open incidents: `project = CASE AND issuetype = Incident AND status != Done`
-- Recent changes: `project = CASE AND issuetype = "Change Request" AND created >= -7d`
-- High priority: `project = CASE AND priority in (Critical, High) AND status != Done`
-- By organization: `project = CASE AND organizations = "Customer Name"`
-- Text search: `project = CASE AND text ~ "error message"`
+- Open incidents: `project = PROJ AND issuetype = Incident AND status != Done`
+- Recent changes: `project = PROJ AND issuetype = "Change Request" AND created >= -7d`
+- High priority: `project = PROJ AND priority in (Critical, High) AND status != Done`
+- By organization: `project = PROJ AND organizations = "Customer Name"`
+- Text search: `project = PROJ AND text ~ "error message"`
 
 ### Troubleshooting Workflow
 
 When investigating a customer issue:
 
 1. Find the organization: `--action list-organizations`
-2. Search their tickets: `--action search --jql "project = CASE AND organizations = \"Customer Name\" ORDER BY updated DESC"`
-3. Get issue details: `--action get --issue-key CASE-1234`
-4. Read comments: `--action get-comments --issue-key CASE-1234`
-5. Download relevant attachments: `--action list-attachments --issue-key CASE-1234`, then `--action download-attachment --attachment-id <id> --output-dir ./downloads`
+2. Search their tickets: `--action search --jql "project = PROJ AND organizations = \"Customer Name\" ORDER BY updated DESC"`
+3. Get issue details: `--action get --issue-key PROJ-1234`
+4. Read comments: `--action get-comments --issue-key PROJ-1234`
+5. Download relevant attachments: `--action list-attachments --issue-key PROJ-1234`, then `--action download-attachment --attachment-id <id> --output-dir ./downloads`
 
 ## Important
 
 - **Read-only** — never create, modify, or transition tickets
 - Be mindful of large result sets — use `--max-results` to limit
-- Default server is `https://networg.atlassian.net` — override with `--server`
-- Credentials are stored in the skill folder and removed when the plugin is uninstalled
+- Server, email, and API token come from the connection config — override with CLI flags
+- Manage connections with `bootstrap.py add-connection jira <name>`
 
 ## Reference
 

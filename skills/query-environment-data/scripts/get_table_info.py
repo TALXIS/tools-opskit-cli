@@ -8,16 +8,20 @@ from typing import Dict, List
 
 # Add skills/ to path for shared module imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from _shared.dataverse_helpers import _ensure_venv
+_ensure_venv()
+from _shared.preflight import require_provider
+
+require_provider("dataverse")
+
 from _shared.dataverse_helpers import (
     add_auth_args,
     add_output_args,
-    check_dependencies,
     create_client,
     format_output,
     is_odata_annotation,
+    validate_auth_args,
 )
-
-check_dependencies()
 
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
 
@@ -68,6 +72,7 @@ Examples:
     add_output_args(parser)
 
     args = parser.parse_args()
+    validate_auth_args(args)
 
     try:
         client = create_client(

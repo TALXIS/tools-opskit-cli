@@ -16,56 +16,9 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-
-# ---------------------------------------------------------------------------
-# Profile configuration
-# ---------------------------------------------------------------------------
-
-_PROFILES_FILENAME = ".profiles.json"
-
-
-def _profiles_path() -> Path:
-    return Path(__file__).resolve().parents[1] / _PROFILES_FILENAME
-
-
-def load_profiles() -> Dict[str, Any]:
-    path = _profiles_path()
-    if path.exists():
-        with open(path, "r") as f:
-            return json.load(f)
-    return {"profiles": {}}
-
-
-def save_profiles(data: Dict[str, Any]) -> None:
-    path = _profiles_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-def get_profile(name: str = "default") -> Dict[str, Any]:
-    data = load_profiles()
-    return data.get("profiles", {}).get(name, {})
-
-
-def set_profile(name: str, profile: Dict[str, Any]) -> None:
-    data = load_profiles()
-    data.setdefault("profiles", {})[name] = profile
-    save_profiles(data)
-
-
-def resolve_config(args) -> Dict[str, str]:
-    """Merge profile defaults with CLI flags (CLI flags take precedence)."""
-    profile = get_profile(args.profile) if args.profile else {}
-    org = args.organization or profile.get("organization", "")
-    project = args.project or profile.get("project", "")
-    if not org:
-        print("Error: --organization is required (or set it in a profile)", file=sys.stderr)
-        sys.exit(1)
-    if not project:
-        print("Error: --project is required (or set it in a profile)", file=sys.stderr)
-        sys.exit(1)
-    return {"organization": org, "project": project}
+# Add skills/ to path for shared module imports
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from _shared.preflight import require_provider
 
 
 # ---------------------------------------------------------------------------
@@ -316,20 +269,15 @@ Examples:
 
   # View recent commits for a file
   %(prog)s --action git-history --repo MyRepo --path "/workflows/flow.json" --top 10
-
-  # Save a profile for reuse
-  %(prog)s --action set-profile --profile-name default \\
-    --organization "https://dev.azure.com/thenetworg" --project "INT0015"
         """,
     )
 
-    parser.add_argument("--organization", help="Azure DevOps organization URL (overrides profile)")
-    parser.add_argument("--project", help="Project name (overrides profile)")
-    parser.add_argument("--profile", default="default", help="Profile name to use (default: 'default')")
+    parser.add_argument("--organization", help="Azure DevOps organization URL (overrides connection)")
+    parser.add_argument("--project", help="Project name (overrides connection)")
     parser.add_argument("--repo", help="Repository name (required for list-files, get-file, git-history)")
     parser.add_argument(
         "--action", required=True,
-        choices=["list-repos", "list-files", "get-file", "search", "git-history", "set-profile", "show-profile"],
+        choices=["list-repos", "list-files", "get-file", "search", "git-history"],
         help="Action to perform",
     )
     parser.add_argument("--path", default="/", help="File or directory path")
@@ -338,37 +286,16 @@ Examples:
     parser.add_argument("--path-filter", help="Filter search results by path (e.g., 'workflows')")
     parser.add_argument("--extension-filter", help="Filter search results by file extension (e.g., 'json')")
     parser.add_argument("--top", type=int, default=25, help="Maximum results to return (default: 25)")
-    parser.add_argument("--profile-name", help="Profile name for set-profile action")
 
     args = parser.parse_args()
 
-    # Profile management actions
-    if args.action == "set-profile":
-        name = args.profile_name or args.profile or "default"
-        profile = {"provider": "ado"}
-        if args.organization:
-            profile["organization"] = args.organization
-        if args.project:
-            profile["project"] = args.project
-        set_profile(name, profile)
-        print(json.dumps({"message": f"Profile '{name}' saved", "profile": profile}, indent=2))
-        print(f"Saved to {_profiles_path()}", file=sys.stderr)
-        return
-
-    if args.action == "show-profile":
-        name = args.profile or "default"
-        profile = get_profile(name)
-        if profile:
-            print(json.dumps({"name": name, "profile": profile}, indent=2))
-        else:
-            all_profiles = load_profiles().get("profiles", {})
-            print(json.dumps({"error": f"Profile '{name}' not found", "available": list(all_profiles.keys())}, indent=2))
-        return
-
-    # Resolve org/project from profile + CLI flags
-    config = resolve_config(args)
-    org = config["organization"]
-    project = config["project"]
+    # Resolve connection (preflight validates, CLI flags override)
+    conn = require_provider("ado", cli_overrides={
+        "organization": args.organization,
+        "project": args.project,
+    })
+    org = conn["organization"]
+    project = conn["project"]
     print(f"Organization: {org}  Project: {project}", file=sys.stderr)
 
     if args.action == "list-repos":

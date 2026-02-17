@@ -11,6 +11,13 @@ __pycache__/
 dist/
 build/
 .playwright-cli/
+
+# Plugin runtime — venv and credentials (never commit)
 .venv/
+config.json
+connections.json
 .credentials.json
 .profiles.json
+
+# Workspace investigation outputs — customer-specific, never commit
+ops/

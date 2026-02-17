@@ -1,14 +1,11 @@
 {
   "name": "opskit",
   "description": "Operational toolkit for managing customer environments, querying data, inspecting code, reading logs, and more.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "NETWORG",
     "email": "hello@networg.com"
   },
   "repository": "https://github.com/TALXIS/tools-opskit-cli",
-  "license": "MIT",
-  "skills": [
-    "./skills/query-environment-data"
-  ]
+  "license": "MIT"
 }

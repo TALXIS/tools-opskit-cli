@@ -2,26 +2,67 @@
 
 import base64
 import json
+import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-def check_dependencies():
-    """Check if required packages are installed and exit with a clear message if not."""
-    missing = []
-    try:
-        import azure.identity  # noqa: F401
-    except ImportError:
-        missing.append("azure-identity")
-    try:
-        import PowerPlatform.Dataverse  # noqa: F401
-    except ImportError:
-        missing.append("PowerPlatform-Dataverse-Client")
+def _ensure_venv() -> None:
+    """Re-exec this script using the venv Python if not already running inside it.
 
-    if missing:
-        print(f"ERROR: Missing required packages: {', '.join(missing)}", file=sys.stderr)
-        print(f"Run: pip install {' '.join(missing)}", file=sys.stderr)
+    Dataverse scripts require packages installed in the venv (.venv/). Calling
+    them with the system Python fails with ModuleNotFoundError. This guard
+    detects that case and transparently re-execs via the venv interpreter.
+    """
+    plugin_root = Path(__file__).resolve().parents[2]
+    venv_dir = plugin_root / ".venv"
+    if sys.platform == "win32":
+        venv_python = venv_dir / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_dir / "bin" / "python3"
+
+    # sys.prefix points to the active virtual environment root; if it already
+    # matches our venv, we're running in the right interpreter — do nothing.
+    if not venv_python.exists() or Path(sys.prefix).resolve() == venv_dir.resolve():
+        return
+
+    os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+
+
+
+def add_auth_args(parser):
+    """Add common authentication arguments to an argparse parser."""
+    # Pull default environment URL from workspace config if available
+    from _shared.preflight import load_workspace
+    ws = load_workspace()
+    default_env_url = ws.get("environment_url")
+
+    parser.add_argument(
+        "--environment-url",
+        default=default_env_url,
+        help="Dataverse environment URL (e.g., https://org.crm.dynamics.com)"
+             + (f" [workspace: {default_env_url}]" if default_env_url else ""),
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Use interactive authentication (tries Azure CLI, falls back to browser)",
+    )
+    parser.add_argument("--tenant-id", help="Azure AD tenant ID (for client secret auth)")
+    parser.add_argument("--client-id", help="Azure AD app client ID (for client secret auth)")
+    parser.add_argument("--client-secret", help="Azure AD app client secret (for client secret auth)")
+
+
+def validate_auth_args(args) -> None:
+    """Validate authentication arguments after parsing. Exits if invalid."""
+    if not args.environment_url:
+        print("ERROR: --environment-url is required.", file=sys.stderr)
+        print("  Set it via CLI flag or in ops/opskit.json:", file=sys.stderr)
+        print('  {"environment_url": "https://org.crm4.dynamics.com"}', file=sys.stderr)
         sys.exit(1)
+    if not args.interactive and not (args.tenant_id and args.client_id and args.client_secret):
+        args.interactive = True
 
 
 def _get_identity_from_token(credential, environment_url: str) -> Optional[Dict[str, str]]:
@@ -193,22 +234,6 @@ def format_output(records, output_format: str = "json") -> str:
     else:
         return str(records)
 
-
-def add_auth_args(parser):
-    """Add common authentication arguments to an argparse parser."""
-    parser.add_argument(
-        "--environment-url",
-        required=True,
-        help="Dataverse environment URL (e.g., https://org.crm.dynamics.com)",
-    )
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="Use interactive authentication (tries Azure CLI, falls back to browser)",
-    )
-    parser.add_argument("--tenant-id", help="Azure AD tenant ID (for client secret auth)")
-    parser.add_argument("--client-id", help="Azure AD app client ID (for client secret auth)")
-    parser.add_argument("--client-secret", help="Azure AD app client secret (for client secret auth)")
 
 
 def add_output_args(parser):

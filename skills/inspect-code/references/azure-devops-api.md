@@ -83,10 +83,10 @@ The `az devops` extension provides CLI access:
 az extension add --name azure-devops
 
 # Configure defaults
-az devops configure --defaults organization=https://dev.azure.com/thenetworg project=INT0015
+az devops configure --defaults organization=https://dev.azure.com/yourorg project=YourProject
 
 # List repositories
-az repos list --org https://dev.azure.com/thenetworg --project INT0015
+az repos list --org https://dev.azure.com/yourorg --project YourProject
 
 # Invoke arbitrary API endpoints
 az devops invoke --area git --resource repositories --org ...

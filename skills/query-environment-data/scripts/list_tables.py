@@ -8,15 +8,19 @@ from typing import Dict, List
 
 # Add skills/ to path for shared module imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from _shared.dataverse_helpers import _ensure_venv
+_ensure_venv()
+from _shared.preflight import require_provider
+
+require_provider("dataverse")
+
 from _shared.dataverse_helpers import (
     add_auth_args,
     add_output_args,
-    check_dependencies,
     create_client,
     format_output,
+    validate_auth_args,
 )
-
-check_dependencies()
 
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
 
@@ -53,8 +57,14 @@ Examples:
 
     add_auth_args(parser)
     add_output_args(parser)
+    parser.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="Filter tables by logical name (case-insensitive substring match)",
+    )
 
     args = parser.parse_args()
+    validate_auth_args(args)
 
     try:
         client = create_client(
@@ -67,6 +77,9 @@ Examples:
 
         print("Listing tables...", file=sys.stderr)
         tables = list_tables(client)
+        if args.search:
+            needle = args.search.lower()
+            tables = [t for t in tables if needle in t.get("LogicalName", "").lower()]
         print(format_output(tables, args.format))
         print(f"\n--- {len(tables)} table(s) found ---", file=sys.stderr)
 
