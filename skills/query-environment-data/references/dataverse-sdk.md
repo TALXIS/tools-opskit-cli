@@ -1,79 +1,217 @@
-# Dataverse Web API Reference
+# Dataverse SDK Reference
 
-## Authentication
+## PowerPlatform Dataverse Client for Python
 
-Use Azure AD OAuth2 client credentials flow:
+Official Microsoft library for interacting with Dataverse environments.
+
+### Installation
+
+```bash
+pip install PowerPlatform-Dataverse-Client
+```
+
+**Documentation:**
+- PyPI: https://pypi.org/project/PowerPlatform-Dataverse-Client/
+- GitHub: https://github.com/microsoft/PowerPlatform-DataverseClient-Python
+- API Reference: https://learn.microsoft.com/python/api/dataverse-sdk-docs-python/dataverse-overview
+
+### Authentication
+
+The client supports multiple authentication methods via Azure Identity:
+
+```python
+from azure.identity import (
+    InteractiveBrowserCredential,  # Browser authentication for devbox
+    ClientSecretCredential,        # Service principal for production
+    AzureCliCredential,           # If logged in via 'az login'
+)
+from PowerPlatform.Dataverse.client import DataverseClient
+
+# Interactive browser authentication (devbox environments)
+credential = InteractiveBrowserCredential()
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
+
+# Client secret authentication (customer tenants)
+credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
+```
+
+**Authentication Requirements:**
 - **Tenant ID** — Azure AD tenant of the customer
 - **Client ID** — Registered Azure AD application
-- **Client Secret** — Application secret
-- **Scope** — `{environment_url}/.default`
+- **Client Secret** — Application secret (for service principal auth)
+- **Scope** — Automatically handled by the client (`{environment_url}/.default`)
 
-## Base URL
+### Table Discovery
 
-```
-https://{org}.crm{N}.dynamics.com/api/data/v9.2/
-```
+```python
+# List all tables (returns List[Dict], not List[str] despite type annotation)
+tables = client.list_tables()
+for t in tables:
+    print(t["LogicalName"], t["SchemaName"], t.get("IsCustomEntity", False))
 
-Where `N` is the region number (e.g., `crm4` for Europe).
+# Get basic table metadata
+info = client.get_table_info("account")
+# Returns: table_schema_name, table_logical_name, entity_set_name,
+#          metadata_id, columns_created
+# NOTE: Does NOT return column metadata
 
-## OData Query Syntax
-
-```
-GET /api/data/v9.2/{entitysetname}?$select=col1,col2&$filter=name eq 'value'&$top=10&$orderby=createdon desc
-```
-
-### Key Parameters
-
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `$select` | Columns to return | `$select=name,accountnumber` |
-| `$filter` | Row filter | `$filter=statecode eq 0` |
-| `$top` | Limit results | `$top=50` |
-| `$orderby` | Sort order | `$orderby=createdon desc` |
-| `$expand` | Related entities | `$expand=primarycontactid($select=fullname)` |
-| `$count` | Include count | `$count=true` |
-
-### Filter Operators
-
-- `eq`, `ne`, `gt`, `ge`, `lt`, `le`
-- `contains(field,'value')`, `startswith(field,'value')`, `endswith(field,'value')`
-- `and`, `or`, `not`
-
-## FetchXML Query Syntax
-
-```xml
-<fetch top="50" distinct="true">
-  <entity name="account">
-    <attribute name="name"/>
-    <attribute name="accountnumber"/>
-    <filter>
-      <condition attribute="statecode" operator="eq" value="0"/>
-    </filter>
-    <order attribute="createdon" descending="true"/>
-  </entity>
-</fetch>
+# Discover columns by fetching one record
+pages = client.get("account", top=1)
+for page in pages:
+    if page:
+        columns = [k for k in page[0].keys() if not k.startswith("@")]
+        print(columns)
+    break
 ```
 
-Pass as URL parameter: `GET /api/data/v9.2/accounts?fetchXml={encoded_xml}`
+### SQL Queries (Recommended)
 
-## Common Entity Set Names
+Execute read-only SQL queries using the Dataverse Web API `?sql=` parameter:
 
-| Entity | Entity Set Name |
-|--------|----------------|
-| Account | `accounts` |
-| Contact | `contacts` |
-| Lead | `leads` |
-| Opportunity | `opportunities` |
-| Case (Incident) | `incidents` |
-| Solution | `solutions` |
-| Solution Component | `solutioncomponents` |
-| Plugin Trace Log | `plugintracelogs` |
-| Audit | `audits` |
-| System Job | `asyncoperations` |
-| Workflow | `workflows` |
-| Flow Session | `flowsessions` |
+```python
+# Simple query
+results = client.query_sql(
+    "SELECT TOP 10 accountid, name FROM account WHERE statecode = 0"
+)
+for record in results:
+    print(record["name"])
+
+# With ordering
+results = client.query_sql(
+    "SELECT TOP 10 name, createdon FROM account WHERE statecode = 0 ORDER BY createdon DESC"
+)
+```
+
+**SQL Syntax Support:**
+- `SELECT col1, col2` with explicit column names (**`SELECT *` is NOT supported**)
+- `TOP N` for limiting results
+- `WHERE` clause with comparison operators (`=`, `<>`, `>`, `<`, `>=`, `<=`)
+- `AND`, `OR`, `NOT` logical operators
+- `LIKE` for pattern matching
+- `ORDER BY` with `ASC` or `DESC`
+
+**SQL Limitations:**
+- **`SELECT *` is NOT supported** — must name columns explicitly
+- **`GROUP BY` and aggregations are NOT supported** — fetch all and aggregate in Python
+- Read-only operations only (no INSERT, UPDATE, DELETE)
+- JOINs may have limited support
+
+### OData Queries (Advanced)
+
+For complex filtering, navigation property expansion, and pagination:
+
+```python
+# Basic query with filter and select
+pages = client.get(
+    "account",
+    select=["accountid", "name"],     # Case-insensitive
+    filter="statecode eq 0",          # MUST use lowercase logical names
+    orderby=["createdon desc"],    # Must be a list
+    top=100
+)
+
+for page in pages:
+    for record in page:
+        print(record["name"])
+
+# Query with navigation property expansion
+pages = client.get(
+    "account",
+    select=["name"],
+    expand=["primarycontactid"],     # Case-sensitive!
+    filter="statecode eq 0"
+)
+
+for page in pages:
+    for account in page:
+        contact = account.get("primarycontactid", {})
+        print(f"{account['name']} - Contact: {contact.get('fullname', 'N/A')}")
+```
+
+**OData Parameters:**
+
+| Parameter | Description | Case Sensitivity | Example |
+|-----------|-------------|------------------|---------|
+| `select` | Columns to return | Case-insensitive (auto-lowercased) | `["name", "accountnumber"]` |
+| `filter` | Row filter | **Case-sensitive** (lowercase required) | `"statecode eq 0"` |
+| `orderby` | Sort order (list) | Case-insensitive | `["createdon desc"]` |
+| `top` | Limit results | N/A | `50` |
+| `expand` | Navigation properties | **Case-sensitive** | `["primarycontactid"]` |
+
+**Filter Operators:**
+- Comparison: `eq`, `ne`, `gt`, `ge`, `lt`, `le`
+- String functions: `contains(field,'value')`, `startswith(field,'value')`, `endswith(field,'value')`
+- Logical: `and`, `or`, `not`
+
+### Error Handling
+
+```python
+from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+
+try:
+    results = client.query_sql("SELECT name FROM account")
+except HttpError as e:
+    print(f"HTTP {e.status_code}: {e.message}")
+    print(f"Error code: {e.code}")
+    if e.is_transient:
+        print("Retry may succeed")
+except ValidationError as e:
+    print(f"Validation error: {e.message}")
+```
+
+### Environment URL Format
+
+```
+https://{org}.crm{N}.dynamics.com
+```
+
+Where `N` is the region number:
+- `crm` — North America
+- `crm4` — Europe
+- `crm5` — APAC
+- etc.
+
+**Important:** No trailing slash in the URL.
+
+## Common Table Schema Names
+
+When querying tables, use the **schema name** (not display name):
+
+| Display Name | Schema Name | Description |
+|--------------|-------------|-------------|
+| Account | `account` | Business account |
+| Contact | `contact` | Person |
+| Lead | `lead` | Potential customer |
+| Opportunity | `opportunity` | Sales opportunity |
+| Case | `incident` | Customer service case |
+| Solution | `solution` | Customization solution |
+| Solution Component | `solutioncomponent` | Solution parts |
+| Plugin Trace Log | `plugintracelog` | Plugin execution logs |
+| Audit | `audit` | Audit history |
+| System Job | `asyncoperation` | Background jobs |
+| Workflow | `workflow` | Classic workflows |
+| Flow Session | `flowsession` | Power Automate runs |
+
+### Custom Tables
+
+Custom tables include a customization prefix (e.g., `new_`, `talxis_`):
+- Schema name: `new_MyCustomTable`
+- Column names: `new_MyCustomColumn`
 
 ## Rate Limits
 
-- API Protection limits apply (5000 requests per user per 24 hours by default)
-- Use `$top` and pagination (`@odata.nextLink`) for large datasets
+- **API Protection limits** apply (5000 requests per user per 24 hours by default)
+- Use `TOP` in SQL or `top` parameter in OData to limit result sets
+- Client automatically handles pagination for large datasets
+
+## Best Practices
+
+1. **Always discover schema first** — Use `list_tables()` then inspect columns before querying
+2. **Use SQL for simple queries** — Cleaner syntax, easier to read
+3. **Use OData for complex scenarios** — Filtering, ordering, and automatic paging
+4. **Name columns explicitly** — `SELECT *` is not supported; discover columns first
+5. **Aggregate in Python** — `GROUP BY` is not supported; fetch records and use `collections.Counter`
+6. **Reuse client instances** — Create once, query multiple times
+7. **Handle errors gracefully** — Check `is_transient` for retry logic
+8. **OData annotations** — Records contain `@odata.etag` and other annotations; filter them with `k for k in record if not k.startswith("@")`
