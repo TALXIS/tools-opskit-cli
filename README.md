@@ -4,25 +4,18 @@ Operational toolkit plugin for [GitHub Copilot CLI](https://github.com/github/co
 
 ## Installation
 
-### GitHub Copilot CLI
+### GitHub Copilot CLI / Claude Code
 
 ```
 /plugin marketplace add TALXIS/tools-opskit-cli
-/plugin install opskit@opskit
-```
-
-### Claude Code
-
-```
-/plugin marketplace add TALXIS/tools-opskit-cli
-/plugin install opskit@opskit
+/plugin install opskit@talxis
 ```
 
 ## Available Skills
 
 | Skill | Description |
 |-------|-------------|
-| **query-environment-data** | Run read-only Dataverse queries (FetchXML/OData) against a customer environment |
+| **query-environment-data** | Run read-only SQL and OData queries against a Dataverse environment using the [PowerPlatform Dataverse Client SDK](https://github.com/microsoft/PowerPlatform-DataverseClient-Python) |
 | **inspect-code** | Look up Azure DevOps repositories to analyze customer system source code |
 | **query-environment-logs** | Read plugin trace logs, audit logs, flow run history, and other environment logs |
 | **query-service-tickets** | List and view customer incidents, changes, and service requests from Jira |
@@ -32,13 +25,19 @@ Operational toolkit plugin for [GitHub Copilot CLI](https://github.com/github/co
 
 ## Prerequisites
 
-Skills use Python scripts that require dependencies listed in `requirements.txt`. Install them with:
+Python 3.10+ with dependencies from `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Scripts also require appropriate credentials and environment configuration. See each skill's `SKILL.md` for details.
+For interactive authentication (devbox environments), log in via Azure CLI:
+
+```bash
+az login
+```
+
+See each skill's `SKILL.md` for detailed usage and authentication options.
 
 ## Development
 
