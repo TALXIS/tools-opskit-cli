@@ -1,0 +1,28 @@
+{
+  "name": "opskit",
+  "owner": {
+    "name": "NETWORG",
+    "email": "hello@networg.com"
+  },
+  "metadata": {
+    "description": "Operational toolkit for managing customer environments, querying data, inspecting code, and reading logs.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "opskit",
+      "description": "Operational skills for environment management, data querying, code inspection, log reading, service tickets, and deployment tracking.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/query-environment-data",
+        "./skills/inspect-code",
+        "./skills/query-environment-logs",
+        "./skills/query-service-tickets",
+        "./skills/retrieve-secrets",
+        "./skills/list-environments",
+        "./skills/list-deployments"
+      ]
+    }
+  ]
+}
