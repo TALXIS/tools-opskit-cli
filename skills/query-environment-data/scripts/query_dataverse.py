@@ -284,13 +284,20 @@ Examples:
         if args.list_tables:
             print("Listing all tables...", file=sys.stderr)
             tables = client.list_tables()
-            print(json.dumps(tables, indent=2))
+            if args.format == "table":
+                # Simple list for table format
+                for table in tables:
+                    print(table)
+            else:
+                # JSON format
+                print(json.dumps(tables, indent=2))
             print(f"\n--- {len(tables)} table(s) found ---", file=sys.stderr)
             
         elif args.table_info:
             print(f"Getting info for table: {args.table_info}...", file=sys.stderr)
             table_info = client.get_table_info(args.table_info)
             if table_info:
+                # Table info is always JSON due to its complex structure
                 print(json.dumps(table_info, indent=2, default=str))
             else:
                 print(f"Table '{args.table_info}' not found", file=sys.stderr)
