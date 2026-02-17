@@ -13,10 +13,7 @@
       "name": "opskit",
       "description": "Operational skills for environment management, data querying, code inspection, log reading, service tickets, and deployment tracking.",
       "source": "./",
-      "strict": false,
-      "skills": [
-        "./skills/query-environment-data"
-      ]
+      "strict": false
     }
   ]
 }
