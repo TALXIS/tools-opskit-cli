@@ -27,8 +27,8 @@ pip install -r requirements.txt
 
 ## Workflow
 
-1. **Identify the target environment** — ask the user which customer/environment to investigate, or use the **list-environments** skill to find it.
-2. **Obtain credentials** — get authentication details for the target tenant, OR use interactive browser authentication (`--interactive`) if working in a devbox environment.
+1. **Identify the target environment** — ask the user for the environment URL (format: `https://orgname.crm4.dynamics.com`).
+2. **Obtain credentials** — use interactive browser authentication (`--interactive`) if working in a devbox environment, or ask the user for service principal credentials (`--tenant-id`, `--client-id`, `--client-secret`).
 3. **Determine what to investigate** — choose the right script based on the task (see Scripts below).
 4. **Query and analyze** — run the appropriate script, then present findings with relevant context.
 
@@ -165,7 +165,7 @@ The Flow API scripts (`query_flow_runs.py`, `get_flow_definition.py`) acquire ad
 To switch tenants or users, run `az login --tenant <tenant-id>` before invoking the script.
 
 ### Client Secret (Customer Tenants)
-Use `--tenant-id`, `--client-id`, and `--client-secret` for service principal authentication. Obtain these credentials using the **retrieve-secrets** skill.
+Use `--tenant-id`, `--client-id`, and `--client-secret` for service principal authentication.
 
 ## Behavior Notes
 

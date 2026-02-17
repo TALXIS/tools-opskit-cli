@@ -26,7 +26,7 @@ Follow these phases in order. Pause after the Analyze phase to present findings 
 
 Based on the ticket content, collect relevant diagnostic data. Not all steps apply to every ticket — use judgment.
 
-1. **Identify the customer and environment** — Use list-environments to find environment URLs and tenant details. Update `context.md` with environment info.
+1. **Identify the customer and environment** — Ask the user for the environment URL and tenant details. Update `context.md` with environment info.
 2. **Query logs** — Based on the issue type:
    - Flow failures: query failed flow runs, drill into action details
    - Plugin errors: query plugin trace logs around the failure timeframe

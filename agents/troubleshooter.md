@@ -64,16 +64,6 @@ python skills/query-service-tickets/scripts/query_jira.py --action download-atta
 python skills/query-service-tickets/scripts/query_jira.py --action list-organizations
 ```
 
-### Environments — Customer Lookup
-```bash
-# List all customers
-python skills/list-environments/scripts/list_environments.py --action list-customers
-# List environments for a customer
-python skills/list-environments/scripts/list_environments.py --action list --customer "customer-name"
-# Get environment details
-python skills/list-environments/scripts/list_environments.py --action details --customer "customer-name" --environment "production"
-```
-
 ### Logs — Plugin Traces, Flow Runs, Audit, System Jobs
 ```bash
 # Failed flow runs
@@ -123,7 +113,7 @@ python skills/list-deployments/scripts/list_deployments.py --action details --de
 ## Investigation Approach
 
 1. **Start with the ticket** — Fetch full details, comments, and attachments. Understand what the customer reported.
-2. **Identify the customer and environment** — Use list-environments to find the environment URL and tenant details.
+2. **Identify the customer and environment** — Ask the user for the environment URL and tenant details.
 3. **Follow the evidence** — Based on the issue type, query the right logs:
    - Flow failures → flow-runs, then drill into action details
    - Plugin errors → plugin-trace logs around the failure time
