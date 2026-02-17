@@ -19,7 +19,6 @@ Operational toolkit plugin for [GitHub Copilot CLI](https://github.com/github/co
 | **inspect-code** | Look up Azure DevOps repositories to analyze customer system source code |
 | **query-environment-logs** | Read plugin trace logs, audit logs, flow run history, and other environment logs |
 | **query-service-tickets** | List and view customer incidents, changes, and service requests from Jira |
-| **retrieve-secrets** | Read environment authentication information for accessing customer tenants |
 | **list-environments** | Print environments, tenants, and their details for a customer |
 | **list-deployments** | View recent deployments and their status |
 

@@ -28,7 +28,7 @@ pip install -r requirements.txt
 ## Workflow
 
 1. **Identify the target environment** — ask the user which customer/environment to investigate, or use the **list-environments** skill to find it.
-2. **Obtain credentials** — use the **retrieve-secrets** skill to get authentication details for the target tenant, OR use interactive browser authentication (`--interactive`) if working in a devbox environment.
+2. **Obtain credentials** — get authentication details for the target tenant, OR use interactive browser authentication (`--interactive`) if working in a devbox environment.
 3. **Determine what to investigate** — choose the right script based on the task (see Scripts below).
 4. **Query and analyze** — run the appropriate script, then present findings with relevant context.
 

@@ -11,15 +11,14 @@ Look up and analyze source code from Azure DevOps repositories that contain a cu
 ## Prerequisites
 
 - Python with dependencies from `requirements.txt` installed
-- Azure DevOps organization URL and Personal Access Token (use the **retrieve-secrets** skill)
+- Azure DevOps organization URL and Personal Access Token
 
 ## Workflow
 
 1. **Identify the customer** — determine which customer's codebase to inspect.
-2. **Obtain credentials** — use the **retrieve-secrets** skill to get Azure DevOps PAT.
-3. **List repositories** — browse available repos in the customer's Azure DevOps project.
-4. **Search or browse code** — find specific files, patterns, or browse the repository tree.
-5. **Analyze** — review the code and explain findings to the user.
+2. **List repositories** — browse available repos in the customer's Azure DevOps project.
+3. **Search or browse code** — find specific files, patterns, or browse the repository tree.
+4. **Analyze** — review the code and explain findings to the user.
 
 ## Usage
 
