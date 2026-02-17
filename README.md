@@ -22,6 +22,30 @@ Operational toolkit plugin for [GitHub Copilot CLI](https://github.com/github/co
 | **list-environments** | Print environments, tenants, and their details for a customer |
 | **list-deployments** | View recent deployments and their status |
 
+## Troubleshooter
+
+The `/troubleshoot` command provides a structured workflow for investigating customer support tickets. It orchestrates all available skills to gather diagnostic data and produces standardized documentation.
+
+### Usage
+
+```
+/troubleshoot CASE-1234
+```
+
+Running without a ticket ID starts a playground session for ad-hoc investigation.
+
+### What It Does
+
+1. Fetches ticket details, comments, and attachments from Jira
+2. Identifies the customer environment and gathers logs, data, code, and deployment info
+3. Presents findings for your review
+4. Generates structured documentation in `ops/<ticket-id>/`:
+   - `context.md` — Ticket metadata and customer info
+   - `investigation.md` — Chronological investigation log
+   - `repro-steps.md` — Reproduction steps
+   - `rca.md` — Root cause analysis
+   - `action-plan.md` — Resolution steps and next actions
+
 ## Prerequisites
 
 Python 3.10+ with dependencies from `requirements.txt`:
