@@ -13,3 +13,4 @@ build/
 .playwright-cli/
 .venv/
 .credentials.json
+.profiles.json

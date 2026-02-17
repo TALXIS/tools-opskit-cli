@@ -2,15 +2,19 @@
 
 ## Authentication
 
-Use a Personal Access Token (PAT) with HTTP Basic auth:
-```
-Authorization: Basic base64(":{PAT}")
+Authentication is handled via `az login`. Access tokens are obtained using:
+```bash
+az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798
 ```
 
-## Base URL
+The resource ID `499b84ac-1321-427f-aa17-267ca6975798` is the Azure DevOps service principal.
+
+## Base URLs
 
 ```
-https://dev.azure.com/{organization}/{project}/_apis/
+https://dev.azure.com/{organization}/{project}/_apis/       # Core APIs (Git, Build, etc.)
+https://almsearch.dev.azure.com/{organization}/{project}/    # Search API
+https://vsrm.dev.azure.com/{organization}/{project}/         # Release Management API
 ```
 
 ## Key Endpoints
@@ -23,19 +27,37 @@ GET /_apis/git/repositories/{repoId}/items?path=/&recursionLevel=OneLevel&api-ve
 GET /_apis/git/repositories/{repoId}/items?path={filePath}&api-version=7.1
 ```
 
+### Git Commits (History)
+
+```
+GET /_apis/git/repositories/{repoId}/commits?$top=10&api-version=7.1
+GET /_apis/git/repositories/{repoId}/commits?searchCriteria.itemPath={filePath}&$top=10&api-version=7.1
+```
+
+Returns commit history with author, date, message. Use `searchCriteria.itemPath` to filter commits affecting a specific file.
+
 ### Code Search
 
 ```
 POST https://almsearch.dev.azure.com/{organization}/{project}/_apis/search/codesearchresults?api-version=7.1
 Body: {
-  "searchText": "PluginBase",
+  "searchText": "ntg_documentsignature path:workflows ext:json",
   "$top": 25,
   "$skip": 0,
   "filters": {
-    "Repository": ["RepoName"]
+    "Repository": ["RepoName"],
+    "Path": ["workflows"],
+    "CodeElement": ["json"]
   }
 }
 ```
+
+Search text supports inline filters:
+- `path:workflows` — filter by directory path
+- `ext:json` — filter by file extension
+- `repo:RepoName` — filter by repository name
+
+Requires the Azure DevOps Search extension to be enabled on the organization.
 
 ### Pipelines / Builds
 
@@ -52,19 +74,22 @@ GET https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases?$top=10&ap
 GET https://vsrm.dev.azure.com/{org}/{project}/_apis/release/releases/{releaseId}?api-version=7.1
 ```
 
-## Python SDK
+## Azure CLI
 
-The `azure-devops` Python package provides typed clients:
+The `az devops` extension provides CLI access:
 
-```python
-from azure.devops.connection import Connection
-from msrest.authentication import BasicAuthentication
+```bash
+# Install extension
+az extension add --name azure-devops
 
-credentials = BasicAuthentication("", pat)
-connection = Connection(base_url=org_url, creds=credentials)
+# Configure defaults
+az devops configure --defaults organization=https://dev.azure.com/thenetworg project=INT0015
 
-git_client = connection.clients.get_git_client()
-build_client = connection.clients.get_build_client()
+# List repositories
+az repos list --org https://dev.azure.com/thenetworg --project INT0015
+
+# Invoke arbitrary API endpoints
+az devops invoke --area git --resource repositories --org ...
 ```
 
 ## Useful Scopes for PAT
