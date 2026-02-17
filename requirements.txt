@@ -1,4 +1,4 @@
-requests>=2.31.0
+PowerPlatform-Dataverse-Client>=0.1.0
 azure-identity>=1.15.0
 azure-devops>=7.1.0b4
 jira>=3.8.0
