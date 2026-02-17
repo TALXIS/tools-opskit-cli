@@ -29,97 +29,107 @@ pip install -r requirements.txt
 
 1. **Identify the target environment** — ask the user which customer/environment to query, or use the **list-environments** skill to find it.
 2. **Obtain credentials** — use the **retrieve-secrets** skill to get authentication details for the target tenant, OR use interactive browser authentication (`--interactive`) if working in a devbox environment.
-3. **Discover available tables** — run `--list-tables` to find what tables exist. The output includes LogicalName, SchemaName, EntitySetName, and whether it's a custom entity.
-4. **Inspect table schema** — run `--table-info <table_name>` to get table metadata and a list of all queryable column names.
-5. **Construct the query** — build a SQL query (preferred for simple reads) or OData query (for filters, ordering, paging) using the discovered column names.
-6. **Execute the query** — run the query. For large tables the SDK automatically pages through all results.
-7. **Present results** — use `--format table` for human-readable output or `--format json` for structured data.
+3. **Discover available tables** — use `list_tables.py` to find what tables exist.
+4. **Inspect table schema** — use `get_table_info.py --table <name>` to get metadata and column names.
+5. **Query data** — use `query_dataverse.py` with SQL or OData using the discovered column names.
+6. **Present results** — use `--format table` for human-readable output or `--format json` for structured data.
 
-## Usage
+## Scripts
 
-### Discovering Tables and Schemas
+### `list_tables.py` — List All Tables
 
-Before querying data, discover what tables and columns are available:
+Discover what tables exist in the environment:
 
 ```bash
-# List all tables (concise: LogicalName, SchemaName, EntitySetName)
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --interactive \
-  --list-tables
+python scripts/list_tables.py \
+  --environment-url "https://org.crm4.dynamics.com" --interactive
 
-# Get table info + all queryable column names
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --interactive \
-  --table-info talxis_contract
+# Table format for quick scanning
+python scripts/list_tables.py \
+  --environment-url "https://org.crm4.dynamics.com" --interactive --format table
 ```
 
-**Important:** Always discover the table schema first before constructing queries. Column names in Dataverse are lowercase logical names (e.g., `talxis_name`, `statecode`, `createdon`). `SELECT *` is NOT supported in SQL queries — you must specify column names explicitly.
+Returns: `LogicalName`, `SchemaName`, `EntitySetName`, `IsCustomEntity` for each table.
 
-### SQL Queries
+**Arguments:** Auth args + `--format` only.
 
-SQL is the simplest query method for read-only data retrieval. Note the supported SQL subset:
-- `SELECT col1, col2 FROM table` (no `SELECT *`)
-- `WHERE`, `TOP`, `ORDER BY`, `AND`/`OR`
-- `GROUP BY` and aggregations are NOT supported
+### `get_table_info.py` — Inspect Table Schema
+
+Get table metadata and all queryable column names:
 
 ```bash
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --interactive \
-  --sql "SELECT TOP 10 talxis_name, createdon FROM talxis_contract WHERE statecode = 0"
+python scripts/get_table_info.py \
+  --environment-url "https://org.crm4.dynamics.com" --interactive \
+  --table account
 ```
 
-### OData Queries
+Returns: table schema name, logical name, entity set name, metadata ID, and a full list of column logical names.
 
-OData queries support filtering, ordering, column selection, and automatic paging through all results:
+**Arguments:**
+- `--table` (required): Logical name of the table to inspect
+- Auth args + `--format`
+
+**Important:** Always inspect the table schema before constructing queries. Column names in Dataverse are lowercase logical names (e.g., `name`, `statecode`, `createdon`). `SELECT *` is NOT supported in SQL queries — you must specify column names explicitly.
+
+### `query_dataverse.py` — SQL and OData Queries
+
+Run read-only queries using SQL or OData syntax:
 
 ```bash
-# Fetch all records (SDK auto-pages)
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --interactive \
-  --table talxis_contract \
-  --select talxis_name talxis_contractid createdon statecode
+# SQL query (simplest for read-only retrieval)
+python scripts/query_dataverse.py \
+  --environment-url "https://org.crm4.dynamics.com" --interactive \
+  --sql "SELECT TOP 10 name, createdon FROM account WHERE statecode = 0"
 
-# With filter and limit
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --interactive \
-  --table talxis_contract \
-  --select talxis_name createdon \
+# OData query with filtering and ordering
+python scripts/query_dataverse.py \
+  --environment-url "https://org.crm4.dynamics.com" --interactive \
+  --table account \
+  --select name createdon \
   --filter "statecode eq 0" \
   --orderby "createdon desc" \
   --top 10
 
 # Table output format
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --interactive \
+python scripts/query_dataverse.py \
+  --environment-url "https://org.crm4.dynamics.com" --interactive \
   --table contact --select fullname emailaddress1 --top 5 --format table
 ```
+
+**Arguments:**
+- `--sql` or `--table` (required, mutually exclusive): SQL query string or table logical name for OData
+- `--select`: Column names to return (OData mode, space-separated)
+- `--filter`: OData `$filter` expression (OData mode)
+- `--orderby`: OData `$orderby` expression(s) (OData mode)
+- `--top`: Maximum number of records to return
+- `--format`: `json` (default) or `table`
+- `--include-annotations`: Include OData annotations (formatted values, lookup names)
+
+**SQL notes:**
+- `SELECT col1, col2 FROM table` — no `SELECT *`
+- `WHERE`, `TOP`, `ORDER BY`, `AND`/`OR` supported
+- `GROUP BY` and aggregations are NOT supported
 
 ## Authentication Methods
 
 ### Interactive (Devbox Environments)
-Use the `--interactive` flag. This tries **Azure CLI** first (silent, no prompt if `az login` was done), then falls back to a browser prompt. Every invocation prints the authenticated user and target environment (e.g., `tomas.prokop@thenetw.org → https://org.crm4.dynamics.com`) so the user always sees where they're connecting.
+Use the `--interactive` flag. This tries **Azure CLI** first (silent, no prompt if `az login` was done), then falls back to a browser prompt. Every invocation prints the authenticated user and target environment (e.g., `user@contoso.com → https://org.crm4.dynamics.com`).
 
 To switch tenants or users, run `az login --tenant <tenant-id>` before invoking the script.
 
 ### Client Secret (Customer Tenants)
 Use `--tenant-id`, `--client-id`, and `--client-secret` for service principal authentication. Obtain these credentials using the **retrieve-secrets** skill.
 
-## SDK Behavior Notes
+## Behavior Notes
 
-- **Authentication is silent when `az login` is active** — no browser prompts or keychain dialogs. Falls back to browser if Azure CLI is not logged in.
+- **Authentication is silent when `az login` is active** — no browser prompts needed.
 - **Paging is automatic** — the SDK fetches all pages. For large tables (10k+ records), progress is reported to stderr.
 - **`SELECT *` is NOT supported** — always specify column names explicitly in SQL queries.
 - **`GROUP BY` is NOT supported** in SQL — for aggregations, fetch all records and process in Python.
-- **`orderby` accepts multiple expressions** — e.g., `--orderby "createdon desc" "talxis_name asc"`.
+- **`--orderby` accepts multiple expressions** — e.g., `--orderby "createdon desc" "name asc"`.
 - **`--top` defaults to no limit** — omit it to fetch all records, or set it to limit results.
-- **Column names are lowercase** — use logical names like `talxis_name`, not display names.
-- **OData annotations** — by default stripped to save context tokens. Use `--include-annotations` to see formatted values (optionset labels, lookup names, etags).
+- **Column names are lowercase** — use logical names, not display names.
+- **OData annotations** — stripped by default. Use `--include-annotations` to see formatted values (optionset labels, lookup names, etags).
 
 ## Important
 
