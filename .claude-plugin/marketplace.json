@@ -15,13 +15,7 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./skills/query-environment-data",
-        "./skills/inspect-code",
-        "./skills/query-environment-logs",
-        "./skills/query-service-tickets",
-        "./skills/retrieve-secrets",
-        "./skills/list-environments",
-        "./skills/list-deployments"
+        "./skills/query-environment-data"
       ]
     }
   ]
