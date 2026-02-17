@@ -2,13 +2,34 @@
 """Query Dataverse environment data using the PowerPlatform Dataverse Client."""
 
 import argparse
+import base64
 import json
 import sys
 from typing import Any, Dict, List, Optional
 
-from azure.identity import ClientSecretCredential, InteractiveBrowserCredential
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ClientSecretCredential,
+    InteractiveBrowserCredential,
+)
 from PowerPlatform.Dataverse.client import DataverseClient
 from PowerPlatform.Dataverse.core.errors import HttpError, ValidationError
+
+
+def _get_identity_from_token(credential, environment_url: str) -> Optional[Dict[str, str]]:
+    """Decode the JWT access token to extract user/tenant info."""
+    try:
+        token = credential.get_token(f"{environment_url.rstrip('/')}/.default")
+        payload = token.token.split(".")[1]
+        payload += "=" * (4 - len(payload) % 4)
+        claims = json.loads(base64.b64decode(payload))
+        return {
+            "username": claims.get("upn", claims.get("unique_name", "unknown")),
+            "tenant_id": claims.get("tid", "unknown"),
+        }
+    except Exception:
+        return None
 
 
 def create_client(
@@ -20,60 +41,100 @@ def create_client(
 ) -> DataverseClient:
     """
     Create a DataverseClient with appropriate authentication.
-    
-    Args:
-        environment_url: Dataverse environment URL (e.g., https://org.crm.dynamics.com)
-        tenant_id: Azure AD tenant ID (required for client secret auth)
-        client_id: Azure AD app client ID (required for client secret auth)
-        client_secret: Azure AD app client secret (required for client secret auth)
-        interactive: If True, use interactive browser authentication
-        
-    Returns:
-        Configured DataverseClient instance
+
+    Interactive auth tries Azure CLI first (silent if 'az login' was done),
+    then falls back to browser prompt. No keychain or token cache files needed.
     """
     if interactive:
-        # Interactive browser authentication for devbox environments
-        credential = InteractiveBrowserCredential()
-        print("Opening browser for interactive authentication...", file=sys.stderr)
+        credential = ChainedTokenCredential(
+            AzureCliCredential(),
+            InteractiveBrowserCredential(),
+        )
     elif tenant_id and client_id and client_secret:
-        # Client secret authentication for customer tenants
         credential = ClientSecretCredential(tenant_id, client_id, client_secret)
     else:
         raise ValueError(
             "Either use --interactive flag or provide --tenant-id, --client-id, and --client-secret"
         )
-    
+
+    # Show who we're connecting as for safety
+    identity = _get_identity_from_token(credential, environment_url)
+    if identity:
+        print(
+            f"{identity['username']} → {environment_url}",
+            file=sys.stderr,
+        )
+    else:
+        print(f"Connecting to {environment_url}...", file=sys.stderr)
+
     return DataverseClient(environment_url, credential)
 
 
-def query_sql(client: DataverseClient, sql_query: str) -> List[Dict[str, Any]]:
+def list_tables(client: DataverseClient) -> List[Dict[str, str]]:
     """
-    Execute a read-only SQL query against Dataverse.
-    
-    Args:
-        client: DataverseClient instance
-        sql_query: SQL query string (e.g., "SELECT TOP 10 name FROM account")
-        
-    Returns:
-        List of records as dictionaries
+    List all tables in the environment, returning just name/schema/type info.
+
+    The SDK's list_tables() returns full metadata dicts. We extract
+    the useful fields for a concise overview.
+    """
+    raw = client.list_tables()
+    tables = []
+    for t in raw:
+        if isinstance(t, dict):
+            tables.append({
+                "LogicalName": t.get("LogicalName", ""),
+                "SchemaName": t.get("SchemaName", ""),
+                "EntitySetName": t.get("EntitySetName", ""),
+                "PrimaryNameAttribute": t.get("PrimaryNameAttribute", ""),
+                "IsCustomEntity": t.get("IsCustomEntity", False),
+            })
+        else:
+            tables.append({"LogicalName": str(t), "SchemaName": str(t)})
+    return tables
+
+
+def _is_odata_annotation(key: str) -> bool:
+    """Check if a key is an OData annotation (metadata, not user data)."""
+    return key.startswith("@") or "@OData" in key or "@Microsoft" in key
+
+
+def _strip_annotations(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove OData annotation keys from a record."""
+    return {k: v for k, v in record.items() if not _is_odata_annotation(k)}
+
+
+def get_table_columns(client: DataverseClient, table_name: str) -> List[Dict[str, str]]:
+    """
+    Discover columns for a table by querying a single record and returning
+    the column names from the response.
+
+    This is more reliable than the Attributes metadata endpoint because
+    it returns the actual queryable column logical names.
+    OData annotations (@odata.etag, etc.) are filtered out.
     """
     try:
-        results = client.query_sql(sql_query)
+        pages = client.get(table_name, top=1)
+        for page in pages:
+            if page:
+                return [
+                    {"LogicalName": k}
+                    for k in sorted(page[0].keys())
+                    if not _is_odata_annotation(k)
+                ]
+            break
+    except (HttpError, ValidationError):
+        pass
+    return []
+
+
+def query_sql(
+    client: DataverseClient, sql_query: str, include_annotations: bool = False
+) -> List[Dict[str, Any]]:
+    """Execute a read-only SQL query against Dataverse."""
+    results = client.query_sql(sql_query)
+    if include_annotations:
         return list(results)
-    except HttpError as e:
-        print(f"HTTP Error {e.status_code}: {e.message}", file=sys.stderr)
-        if e.code:
-            print(f"Error code: {e.code}", file=sys.stderr)
-        if e.subcode:
-            print(f"Subcode: {e.subcode}", file=sys.stderr)
-        if e.details and e.details.get('service_error_code'):
-            print(f"Service error code: {e.details['service_error_code']}", file=sys.stderr)
-        if e.is_transient:
-            print("This error may be transient. Consider retrying.", file=sys.stderr)
-        raise
-    except ValidationError as e:
-        print(f"Validation Error: {e.message}", file=sys.stderr)
-        raise
+    return [_strip_annotations(r) for r in results]
 
 
 def query_odata(
@@ -81,94 +142,69 @@ def query_odata(
     table_name: str,
     select: Optional[List[str]] = None,
     filter_expr: Optional[str] = None,
-    orderby: Optional[str] = None,
-    top: int = 50,
+    orderby: Optional[List[str]] = None,
+    top: Optional[int] = None,
+    include_annotations: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Query Dataverse using OData parameters.
-    
+
     Args:
         client: DataverseClient instance
         table_name: Table schema name (e.g., "account", "contact")
         select: List of column names to select
         filter_expr: OData filter expression (e.g., "statecode eq 0")
-        orderby: Order by expression (e.g., "createdon desc")
+        orderby: List of order by expressions (e.g., ["createdon desc"])
         top: Maximum number of results to return
-        
-    Returns:
-        List of records as dictionaries
+        include_annotations: If True, keep OData annotations (formatted values, etag, etc.)
     """
-    try:
-        # Build query parameters
-        kwargs = {"top": top}
-        if select:
-            kwargs["select"] = select
-        if filter_expr:
-            kwargs["filter"] = filter_expr
-        if orderby:
-            kwargs["orderby"] = orderby
-        
-        # Execute query - returns iterator of pages
-        pages = client.get(table_name, **kwargs)
-        
-        # Collect all records from all pages
-        all_records = []
-        for page in pages:
+    kwargs: Dict[str, Any] = {}
+    if select:
+        kwargs["select"] = select
+    if filter_expr:
+        kwargs["filter"] = filter_expr
+    if orderby:
+        kwargs["orderby"] = orderby
+    if top is not None:
+        kwargs["top"] = top
+
+    pages = client.get(table_name, **kwargs)
+
+    all_records: List[Dict[str, Any]] = []
+    for page in pages:
+        if include_annotations:
             all_records.extend(page)
-            # Limit to top parameter across all pages
-            if len(all_records) >= top:
-                all_records = all_records[:top]
-                break
-                
-        return all_records
-    except HttpError as e:
-        print(f"HTTP Error {e.status_code}: {e.message}", file=sys.stderr)
-        if e.code:
-            print(f"Error code: {e.code}", file=sys.stderr)
-        if e.subcode:
-            print(f"Subcode: {e.subcode}", file=sys.stderr)
-        if e.details and e.details.get('service_error_code'):
-            print(f"Service error code: {e.details['service_error_code']}", file=sys.stderr)
-        if e.is_transient:
-            print("This error may be transient. Consider retrying.", file=sys.stderr)
-        raise
-    except ValidationError as e:
-        print(f"Validation Error: {e.message}", file=sys.stderr)
-        raise
+        else:
+            all_records.extend(_strip_annotations(r) for r in page)
+        print(f"  Fetched {len(all_records)} records...", file=sys.stderr)
+
+    return all_records
 
 
 def format_output(records: List[Dict[str, Any]], output_format: str = "json") -> str:
-    """
-    Format query results for output.
-    
-    Args:
-        records: List of record dictionaries
-        output_format: Output format ("json" or "table")
-        
-    Returns:
-        Formatted string
-    """
+    """Format query results for output."""
     if output_format == "json":
         return json.dumps(records, indent=2, default=str)
     elif output_format == "table":
         if not records:
             return "No records found"
-        
-        # Extract column names from first record
+
         columns = list(records[0].keys())
-        
-        # Build simple table
-        lines = []
-        # Header
-        header = " | ".join(str(col) for col in columns)
-        lines.append(header)
-        lines.append("-" * len(header))
-        
-        # Rows
+
+        # Calculate column widths
+        widths = {col: len(str(col)) for col in columns}
         for record in records:
-            row = " | ".join(str(record.get(col, "")) for col in columns)
+            for col in columns:
+                widths[col] = max(widths[col], len(str(record.get(col, ""))))
+
+        lines = []
+        header = " | ".join(str(col).ljust(widths[col]) for col in columns)
+        lines.append(header)
+        lines.append("-+-".join("-" * widths[col] for col in columns))
+        for record in records:
+            row = " | ".join(str(record.get(col, "")).ljust(widths[col]) for col in columns)
             lines.append(row)
-        
+
         return "\n".join(lines)
     else:
         return str(records)
@@ -180,29 +216,28 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # List all available tables
+  # List all tables (concise overview)
   %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
     --list-tables
-  
-  # Get information about a specific table
+
+  # Get table info including columns
   %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
-    --table-info account
-  
+    --table-info talxis_contract
+
   # SQL query with interactive authentication
   %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
     --sql "SELECT TOP 10 name, accountnumber FROM account WHERE statecode = 0"
-  
-  # OData query with client secret authentication
-  %(prog)s --environment-url https://org.crm.dynamics.com \\
-    --tenant-id xxx --client-id xxx --client-secret xxx \\
-    --table account --select name accountnumber --filter "statecode eq 0" --top 10
-  
-  # OData query with table output
+
+  # OData query with all records (no --top limit)
   %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
-    --table contact --select fullname emailaddress1 --top 5 --format table
+    --table account --select name accountnumber --filter "statecode eq 0"
+
+  # OData query with limit and ordering
+  %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
+    --table contact --select fullname emailaddress1 --orderby "createdon desc" --top 10
         """,
     )
-    
+
     # Environment and authentication
     parser.add_argument(
         "--environment-url",
@@ -212,13 +247,13 @@ Examples:
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Use interactive browser authentication (for devbox environments)",
+        help="Use interactive authentication (tries Azure CLI, falls back to browser)",
     )
     parser.add_argument("--tenant-id", help="Azure AD tenant ID (for client secret auth)")
     parser.add_argument("--client-id", help="Azure AD app client ID (for client secret auth)")
     parser.add_argument("--client-secret", help="Azure AD app client secret (for client secret auth)")
-    
-    # Query parameters
+
+    # Action
     query_group = parser.add_mutually_exclusive_group(required=True)
     query_group.add_argument(
         "--sql",
@@ -236,10 +271,10 @@ Examples:
     query_group.add_argument(
         "--table-info",
         metavar="TABLE_NAME",
-        help="Get detailed information about a specific table schema",
+        help="Get table info and discover columns",
     )
-    
-    # OData parameters (only used with --table)
+
+    # OData parameters (used with --table)
     parser.add_argument(
         "--select",
         nargs="+",
@@ -251,15 +286,16 @@ Examples:
     )
     parser.add_argument(
         "--orderby",
-        help='Order by expression (e.g., "createdon desc")',
+        nargs="+",
+        help='Order by expressions (e.g., "createdon desc")',
     )
     parser.add_argument(
         "--top",
         type=int,
-        default=50,
-        help="Maximum number of results to return (default: 50)",
+        default=None,
+        help="Maximum number of results to return (default: all records)",
     )
-    
+
     # Output options
     parser.add_argument(
         "--format",
@@ -267,11 +303,15 @@ Examples:
         default="json",
         help="Output format (default: json)",
     )
-    
+    parser.add_argument(
+        "--include-annotations",
+        action="store_true",
+        help="Include OData annotations (formatted values, etag, lookup names)",
+    )
+
     args = parser.parse_args()
-    
+
     try:
-        # Create Dataverse client
         client = create_client(
             environment_url=args.environment_url,
             tenant_id=args.tenant_id,
@@ -279,37 +319,34 @@ Examples:
             client_secret=args.client_secret,
             interactive=args.interactive,
         )
-        
-        # Execute action
+
         if args.list_tables:
-            print("Listing all tables...", file=sys.stderr)
-            tables = client.list_tables()
-            if args.format == "table":
-                # Simple list for table format
-                for table in tables:
-                    print(table)
-            else:
-                # JSON format
-                print(json.dumps(tables, indent=2))
+            print("Listing tables...", file=sys.stderr)
+            tables = list_tables(client)
+            output = format_output(tables, args.format)
+            print(output)
             print(f"\n--- {len(tables)} table(s) found ---", file=sys.stderr)
-            
+
         elif args.table_info:
             print(f"Getting info for table: {args.table_info}...", file=sys.stderr)
-            table_info = client.get_table_info(args.table_info)
-            if table_info:
-                # Table info is always JSON due to its complex structure
-                print(json.dumps(table_info, indent=2, default=str))
-            else:
+            info = client.get_table_info(args.table_info)
+            if not info:
                 print(f"Table '{args.table_info}' not found", file=sys.stderr)
                 sys.exit(1)
-                
+
+            print(f"Discovering columns...", file=sys.stderr)
+            columns = get_table_columns(client, args.table_info)
+            info["columns"] = columns
+
+            print(json.dumps(info, indent=2, default=str))
+
         elif args.sql:
-            print(f"Executing SQL query...", file=sys.stderr)
-            records = query_sql(client, args.sql)
+            print("Executing SQL query...", file=sys.stderr)
+            records = query_sql(client, args.sql, args.include_annotations)
             output = format_output(records, args.format)
             print(output)
             print(f"\n--- {len(records)} record(s) returned ---", file=sys.stderr)
-            
+
         else:  # --table
             print(f"Querying table: {args.table}...", file=sys.stderr)
             records = query_odata(
@@ -319,11 +356,22 @@ Examples:
                 filter_expr=args.filter,
                 orderby=args.orderby,
                 top=args.top,
+                include_annotations=args.include_annotations,
             )
             output = format_output(records, args.format)
             print(output)
             print(f"\n--- {len(records)} record(s) returned ---", file=sys.stderr)
-        
+
+    except (HttpError, ValidationError) as e:
+        print(f"Dataverse Error: {e}", file=sys.stderr)
+        if isinstance(e, HttpError):
+            if e.subcode:
+                print(f"  Subcode: {e.subcode}", file=sys.stderr)
+            if e.details and e.details.get("service_error_code"):
+                print(f"  Service error code: {e.details['service_error_code']}", file=sys.stderr)
+            if e.is_transient:
+                print("  This error may be transient. Consider retrying.", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

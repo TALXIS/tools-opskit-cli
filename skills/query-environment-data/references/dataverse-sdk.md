@@ -42,6 +42,29 @@ client = DataverseClient("https://yourorg.crm.dynamics.com", credential)
 - **Client Secret** — Application secret (for service principal auth)
 - **Scope** — Automatically handled by the client (`{environment_url}/.default`)
 
+### Table Discovery
+
+```python
+# List all tables (returns List[Dict], not List[str] despite type annotation)
+tables = client.list_tables()
+for t in tables:
+    print(t["LogicalName"], t["SchemaName"], t.get("IsCustomEntity", False))
+
+# Get basic table metadata
+info = client.get_table_info("account")
+# Returns: table_schema_name, table_logical_name, entity_set_name,
+#          metadata_id, columns_created
+# NOTE: Does NOT return column metadata
+
+# Discover columns by fetching one record
+pages = client.get("account", top=1)
+for page in pages:
+    if page:
+        columns = [k for k in page[0].keys() if not k.startswith("@")]
+        print(columns)
+    break
+```
+
 ### SQL Queries (Recommended)
 
 Execute read-only SQL queries using the Dataverse Web API `?sql=` parameter:
@@ -61,18 +84,18 @@ results = client.query_sql(
 ```
 
 **SQL Syntax Support:**
-- `SELECT` with column names or `*`
+- `SELECT col1, col2` with explicit column names (**`SELECT *` is NOT supported**)
 - `TOP N` for limiting results
 - `WHERE` clause with comparison operators (`=`, `<>`, `>`, `<`, `>=`, `<=`)
 - `AND`, `OR`, `NOT` logical operators
 - `LIKE` for pattern matching
 - `ORDER BY` with `ASC` or `DESC`
-- `INNER JOIN`, `LEFT JOIN` for relationships
 
 **SQL Limitations:**
-- Read-only operations (no INSERT, UPDATE, DELETE)
-- Limited to Dataverse supported SQL subset
-- Some advanced SQL features may not be available
+- **`SELECT *` is NOT supported** — must name columns explicitly
+- **`GROUP BY` and aggregations are NOT supported** — fetch all and aggregate in Python
+- Read-only operations only (no INSERT, UPDATE, DELETE)
+- JOINs may have limited support
 
 ### OData Queries (Advanced)
 
@@ -84,7 +107,7 @@ pages = client.get(
     "account",
     select=["accountid", "name"],     # Case-insensitive
     filter="statecode eq 0",          # MUST use lowercase logical names
-    orderby="createdon desc",
+    orderby=["createdon desc"],    # Must be a list
     top=100
 )
 
@@ -112,7 +135,7 @@ for page in pages:
 |-----------|-------------|------------------|---------|
 | `select` | Columns to return | Case-insensitive (auto-lowercased) | `["name", "accountnumber"]` |
 | `filter` | Row filter | **Case-sensitive** (lowercase required) | `"statecode eq 0"` |
-| `orderby` | Sort order | Case-insensitive | `"createdon desc"` |
+| `orderby` | Sort order (list) | Case-insensitive | `["createdon desc"]` |
 | `top` | Limit results | N/A | `50` |
 | `expand` | Navigation properties | **Case-sensitive** | `["primarycontactid"]` |
 
@@ -184,9 +207,11 @@ Custom tables include a customization prefix (e.g., `new_`, `talxis_`):
 
 ## Best Practices
 
-1. **Use SQL for simple queries** — Cleaner syntax, easier to read
-2. **Use OData for complex scenarios** — Navigation properties, advanced filtering
-3. **Limit result sets** — Always use `TOP` or `top` parameter
-4. **Reuse client instances** — Create once, query multiple times
-5. **Handle errors gracefully** — Check `is_transient` for retry logic
-6. **Use specific columns** — Don't select all columns unless needed
+1. **Always discover schema first** — Use `list_tables()` then inspect columns before querying
+2. **Use SQL for simple queries** — Cleaner syntax, easier to read
+3. **Use OData for complex scenarios** — Filtering, ordering, and automatic paging
+4. **Name columns explicitly** — `SELECT *` is not supported; discover columns first
+5. **Aggregate in Python** — `GROUP BY` is not supported; fetch records and use `collections.Counter`
+6. **Reuse client instances** — Create once, query multiple times
+7. **Handle errors gracefully** — Check `is_transient` for retry logic
+8. **OData annotations** — Records contain `@odata.etag` and other annotations; filter them with `k for k in record if not k.startswith("@")`

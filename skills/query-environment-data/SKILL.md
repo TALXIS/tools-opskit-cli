@@ -10,18 +10,19 @@ Run read-only data queries against a specific Power Platform / Dataverse environ
 
 ## Prerequisites
 
-- Python with dependencies from `requirements.txt` installed
-- Environment URL and authentication credentials (use the **retrieve-secrets** skill to obtain these)
+- Python 3.10+ with dependencies from `requirements.txt` installed (`pip install -r requirements.txt`)
+- Environment URL (format: `https://orgname.crm4.dynamics.com` — get from Power Platform admin center)
+- Interactive browser authentication or client secret credentials
 
 ## Workflow
 
 1. **Identify the target environment** — ask the user which customer/environment to query, or use the **list-environments** skill to find it.
-2. **Obtain credentials** — use the **retrieve-secrets** skill to get authentication details for the target tenant, OR use interactive browser authentication if working in a devbox environment.
-3. **Discover available tables** — list all tables in the environment to find what data is available.
-4. **Inspect table schema** — get detailed information about the table structure, including column names and types.
-5. **Construct the query** — build a SQL query (preferred) or OData query based on the discovered schema.
-6. **Execute the query** — run the query script against the environment's Dataverse Web API.
-7. **Present results** — format and display the results in a readable table or JSON.
+2. **Obtain credentials** — use the **retrieve-secrets** skill to get authentication details for the target tenant, OR use interactive browser authentication (`--interactive`) if working in a devbox environment.
+3. **Discover available tables** — run `--list-tables` to find what tables exist. The output includes LogicalName, SchemaName, EntitySetName, and whether it's a custom entity.
+4. **Inspect table schema** — run `--table-info <table_name>` to get table metadata and a list of all queryable column names.
+5. **Construct the query** — build a SQL query (preferred for simple reads) or OData query (for filters, ordering, paging) using the discovered column names.
+6. **Execute the query** — run the query. For large tables the SDK automatically pages through all results.
+7. **Present results** — use `--format table` for human-readable output or `--format json` for structured data.
 
 ## Usage
 
@@ -30,119 +31,90 @@ Run read-only data queries against a specific Power Platform / Dataverse environ
 Before querying data, discover what tables and columns are available:
 
 ```bash
-# List all available tables
+# List all tables (concise: LogicalName, SchemaName, EntitySetName)
 python skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" \
   --interactive \
   --list-tables
 
-# Get detailed information about a specific table
+# Get table info + all queryable column names
 python skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" \
   --interactive \
-  --table-info account
+  --table-info talxis_contract
 ```
 
-You can also use the Python API directly:
+**Important:** Always discover the table schema first before constructing queries. Column names in Dataverse are lowercase logical names (e.g., `talxis_name`, `statecode`, `createdon`). `SELECT *` is NOT supported in SQL queries — you must specify column names explicitly.
 
-```python
-from azure.identity import InteractiveBrowserCredential
-from PowerPlatform.Dataverse.client import DataverseClient
+### SQL Queries
 
-# Connect to the environment
-credential = InteractiveBrowserCredential()
-client = DataverseClient("https://org.crm4.dynamics.com", credential)
-
-# List all available tables
-tables = client.list_tables()
-print(f"Found {len(tables)} tables")
-for table in tables[:10]:  # Show first 10
-    print(f"  - {table}")
-
-# Get detailed information about a specific table
-table_info = client.get_table_info("account")
-print(f"\nTable: {table_info['table_schema_name']}")
-print(f"Logical Name: {table_info['table_logical_name']}")
-print(f"Entity Set: {table_info['entity_set_name']}")
-print(f"Primary Key: {table_info['primary_key_attribute']}")
-
-# Columns are available in table metadata via Web API
-# Use this information to construct your queries
-```
-
-**Important:** Always discover the table schema first before constructing queries. This ensures you use the correct table names and column names.
-
-### SQL Queries (Recommended)
-
-SQL is the recommended query method for simple, read-only data retrieval:
+SQL is the simplest query method for read-only data retrieval. Note the supported SQL subset:
+- `SELECT col1, col2 FROM table` (no `SELECT *`)
+- `WHERE`, `TOP`, `ORDER BY`, `AND`/`OR`
+- `GROUP BY` and aggregations are NOT supported
 
 ```bash
-# Interactive authentication (devbox environment)
 python skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" \
   --interactive \
-  --sql "SELECT TOP 10 name, accountnumber FROM account WHERE statecode = 0"
-
-# Client secret authentication (customer tenant)
-python skills/query-environment-data/scripts/query_dataverse.py \
-  --environment-url "https://org.crm4.dynamics.com" \
-  --tenant-id "xxx-xxx-xxx" \
-  --client-id "xxx-xxx-xxx" \
-  --client-secret "xxx" \
-  --sql "SELECT TOP 10 name, accountnumber FROM account WHERE statecode = 0"
+  --sql "SELECT TOP 10 talxis_name, createdon FROM talxis_contract WHERE statecode = 0"
 ```
 
-### OData Queries (Advanced)
+### OData Queries
 
-For more complex filtering, sorting, and relationship expansion:
+OData queries support filtering, ordering, column selection, and automatic paging through all results:
 
 ```bash
-# Query with filter and select
+# Fetch all records (SDK auto-pages)
 python skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" \
   --interactive \
-  --table account \
-  --select name accountnumber \
+  --table talxis_contract \
+  --select talxis_name talxis_contractid createdon statecode
+
+# With filter and limit
+python skills/query-environment-data/scripts/query_dataverse.py \
+  --environment-url "https://org.crm4.dynamics.com" \
+  --interactive \
+  --table talxis_contract \
+  --select talxis_name createdon \
   --filter "statecode eq 0" \
   --orderby "createdon desc" \
   --top 10
 
-# Output as table format
+# Table output format
 python skills/query-environment-data/scripts/query_dataverse.py \
   --environment-url "https://org.crm4.dynamics.com" \
   --interactive \
-  --table contact \
-  --select fullname emailaddress1 \
-  --top 5 \
-  --format table
+  --table contact --select fullname emailaddress1 --top 5 --format table
 ```
 
 ## Authentication Methods
 
-### Interactive Browser (Devbox Environments)
-Use the `--interactive` flag when running the script on a support user's computer. This will open a browser window for authentication using the user's credentials.
+### Interactive (Devbox Environments)
+Use the `--interactive` flag. This tries **Azure CLI** first (silent, no prompt if `az login` was done), then falls back to a browser prompt. Every invocation prints the authenticated user and target environment (e.g., `tomas.prokop@thenetw.org → https://org.crm4.dynamics.com`) so the user always sees where they're connecting.
+
+To switch tenants or users, run `az login --tenant <tenant-id>` before invoking the script.
 
 ### Client Secret (Customer Tenants)
-Use `--tenant-id`, `--client-id`, and `--client-secret` when accessing a customer's environment. Obtain these credentials using the **retrieve-secrets** skill.
+Use `--tenant-id`, `--client-id`, and `--client-secret` for service principal authentication. Obtain these credentials using the **retrieve-secrets** skill.
 
-## Common Query Examples
+## SDK Behavior Notes
 
-### SQL Examples
-- List active accounts: `SELECT TOP 10 name, accountnumber FROM account WHERE statecode = 0`
-- Find contacts by email: `SELECT fullname, emailaddress1 FROM contact WHERE emailaddress1 LIKE '%@example.com%'`
-- Get solution components: `SELECT componenttype, objectid FROM solutioncomponent WHERE solutionid = '{solution-guid}'`
-
-### OData Examples
-- List accounts: `--table account --select name accountnumber --top 10`
-- Find contacts by email: `--table contact --filter "contains(emailaddress1,'@example.com')"`
-- Get active opportunities: `--table opportunity --filter "statecode eq 0" --orderby "createdon desc"`
+- **Authentication is silent when `az login` is active** — no browser prompts or keychain dialogs. Falls back to browser if Azure CLI is not logged in.
+- **Paging is automatic** — the SDK fetches all pages. For large tables (10k+ records), progress is reported to stderr.
+- **`SELECT *` is NOT supported** — always specify column names explicitly in SQL queries.
+- **`GROUP BY` is NOT supported** in SQL — for aggregations, fetch all records and process in Python.
+- **`orderby` accepts multiple expressions** — e.g., `--orderby "createdon desc" "talxis_name asc"`.
+- **`--top` defaults to no limit** — omit it to fetch all records, or set it to limit results.
+- **Column names are lowercase** — use logical names like `talxis_name`, not display names.
+- **OData annotations** — by default stripped to save context tokens. Use `--include-annotations` to see formatted values (optionset labels, lookup names, etags).
 
 ## Important
 
 - **Read-only operations only** — never modify or delete data
 - Always confirm the target environment with the user before executing queries
-- SQL queries support a limited subset of standard SQL syntax
-- Be mindful of large result sets — use `TOP` in SQL or `--top` in OData to limit results
+- The environment URL must be in the format `https://orgname.crm4.dynamics.com` (no trailing slash)
 
 ## Reference
 
