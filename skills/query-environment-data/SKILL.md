@@ -17,11 +17,60 @@ Run read-only data queries against a specific Power Platform / Dataverse environ
 
 1. **Identify the target environment** — ask the user which customer/environment to query, or use the **list-environments** skill to find it.
 2. **Obtain credentials** — use the **retrieve-secrets** skill to get authentication details for the target tenant, OR use interactive browser authentication if working in a devbox environment.
-3. **Construct the query** — build a SQL query (preferred) or OData query based on what data the user needs.
-4. **Execute the query** — run the query script against the environment's Dataverse Web API.
-5. **Present results** — format and display the results in a readable table or JSON.
+3. **Discover available tables** — list all tables in the environment to find what data is available.
+4. **Inspect table schema** — get detailed information about the table structure, including column names and types.
+5. **Construct the query** — build a SQL query (preferred) or OData query based on the discovered schema.
+6. **Execute the query** — run the query script against the environment's Dataverse Web API.
+7. **Present results** — format and display the results in a readable table or JSON.
 
 ## Usage
+
+### Discovering Tables and Schemas
+
+Before querying data, discover what tables and columns are available:
+
+```bash
+# List all available tables
+python skills/query-environment-data/scripts/query_dataverse.py \
+  --environment-url "https://org.crm4.dynamics.com" \
+  --interactive \
+  --list-tables
+
+# Get detailed information about a specific table
+python skills/query-environment-data/scripts/query_dataverse.py \
+  --environment-url "https://org.crm4.dynamics.com" \
+  --interactive \
+  --table-info account
+```
+
+You can also use the Python API directly:
+
+```python
+from azure.identity import InteractiveBrowserCredential
+from PowerPlatform.Dataverse.client import DataverseClient
+
+# Connect to the environment
+credential = InteractiveBrowserCredential()
+client = DataverseClient("https://org.crm4.dynamics.com", credential)
+
+# List all available tables
+tables = client.list_tables()
+print(f"Found {len(tables)} tables")
+for table in tables[:10]:  # Show first 10
+    print(f"  - {table}")
+
+# Get detailed information about a specific table
+table_info = client.get_table_info("account")
+print(f"\nTable: {table_info['table_schema_name']}")
+print(f"Logical Name: {table_info['table_logical_name']}")
+print(f"Entity Set: {table_info['entity_set_name']}")
+print(f"Primary Key: {table_info['primary_key_attribute']}")
+
+# Columns are available in table metadata via Web API
+# Use this information to construct your queries
+```
+
+**Important:** Always discover the table schema first before constructing queries. This ensures you use the correct table names and column names.
 
 ### SQL Queries (Recommended)
 

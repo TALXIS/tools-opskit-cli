@@ -180,6 +180,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # List all available tables
+  %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
+    --list-tables
+  
+  # Get information about a specific table
+  %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
+    --table-info account
+  
   # SQL query with interactive authentication
   %(prog)s --environment-url https://org.crm.dynamics.com --interactive \\
     --sql "SELECT TOP 10 name, accountnumber FROM account WHERE statecode = 0"
@@ -219,6 +227,16 @@ Examples:
     query_group.add_argument(
         "--table",
         help="Table name for OData query (e.g., account, contact)",
+    )
+    query_group.add_argument(
+        "--list-tables",
+        action="store_true",
+        help="List all available tables in the environment",
+    )
+    query_group.add_argument(
+        "--table-info",
+        metavar="TABLE_NAME",
+        help="Get detailed information about a specific table schema",
     )
     
     # OData parameters (only used with --table)
@@ -262,11 +280,30 @@ Examples:
             interactive=args.interactive,
         )
         
-        # Execute query
-        if args.sql:
+        # Execute action
+        if args.list_tables:
+            print("Listing all tables...", file=sys.stderr)
+            tables = client.list_tables()
+            print(json.dumps(tables, indent=2))
+            print(f"\n--- {len(tables)} table(s) found ---", file=sys.stderr)
+            
+        elif args.table_info:
+            print(f"Getting info for table: {args.table_info}...", file=sys.stderr)
+            table_info = client.get_table_info(args.table_info)
+            if table_info:
+                print(json.dumps(table_info, indent=2, default=str))
+            else:
+                print(f"Table '{args.table_info}' not found", file=sys.stderr)
+                sys.exit(1)
+                
+        elif args.sql:
             print(f"Executing SQL query...", file=sys.stderr)
             records = query_sql(client, args.sql)
-        else:
+            output = format_output(records, args.format)
+            print(output)
+            print(f"\n--- {len(records)} record(s) returned ---", file=sys.stderr)
+            
+        else:  # --table
             print(f"Querying table: {args.table}...", file=sys.stderr)
             records = query_odata(
                 client=client,
@@ -276,12 +313,9 @@ Examples:
                 orderby=args.orderby,
                 top=args.top,
             )
-        
-        # Format and output results
-        output = format_output(records, args.format)
-        print(output)
-        
-        print(f"\n--- {len(records)} record(s) returned ---", file=sys.stderr)
+            output = format_output(records, args.format)
+            print(output)
+            print(f"\n--- {len(records)} record(s) returned ---", file=sys.stderr)
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
