@@ -64,6 +64,10 @@ def query_sql(client: DataverseClient, sql_query: str) -> List[Dict[str, Any]]:
         print(f"HTTP Error {e.status_code}: {e.message}", file=sys.stderr)
         if e.code:
             print(f"Error code: {e.code}", file=sys.stderr)
+        if e.subcode:
+            print(f"Subcode: {e.subcode}", file=sys.stderr)
+        if e.details and e.details.get('service_error_code'):
+            print(f"Service error code: {e.details['service_error_code']}", file=sys.stderr)
         if e.is_transient:
             print("This error may be transient. Consider retrying.", file=sys.stderr)
         raise
@@ -121,6 +125,10 @@ def query_odata(
         print(f"HTTP Error {e.status_code}: {e.message}", file=sys.stderr)
         if e.code:
             print(f"Error code: {e.code}", file=sys.stderr)
+        if e.subcode:
+            print(f"Subcode: {e.subcode}", file=sys.stderr)
+        if e.details and e.details.get('service_error_code'):
+            print(f"Service error code: {e.details['service_error_code']}", file=sys.stderr)
         if e.is_transient:
             print("This error may be transient. Consider retrying.", file=sys.stderr)
         raise
