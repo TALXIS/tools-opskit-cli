@@ -427,7 +427,28 @@ _PROVIDER_LABELS = {
 }
 
 
-def print_status(statuses: Dict[str, ProviderStatus]) -> None:
+def print_status_json(statuses: Dict[str, ProviderStatus]) -> None:
+    """Print provider statuses as machine-readable JSON to stdout."""
+    data = {}
+    for name, status in statuses.items():
+        data[name] = {
+            "ready": status.ready,
+            "checks": [
+                {"name": c.name, "passed": c.passed, "detail": c.detail}
+                for c in status.checks
+            ],
+            "instructions": status.instructions,
+        }
+    ws = load_workspace()
+    if ws:
+        data["_workspace"] = ws
+    print(json.dumps(data, indent=2))
+
+
+def print_status(statuses: Dict[str, ProviderStatus], fmt: str = "text") -> None:
+    if fmt == "json":
+        print_status_json(statuses)
+        return
     print("=== OpsKit Provider Status ===\n")
     for name, status in statuses.items():
         label = _PROVIDER_LABELS.get(name, name)

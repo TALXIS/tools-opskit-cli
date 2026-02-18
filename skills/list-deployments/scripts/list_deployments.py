@@ -9,6 +9,11 @@ a deployment database, or configuration management tool).
 import argparse
 import json
 import sys
+from pathlib import Path
+
+# Add skills/ to path for shared module imports
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from _shared.preflight import require_provider
 
 
 # Stub: In production, replace with actual deployment tracking data source
@@ -63,6 +68,8 @@ def main():
     parser.add_argument("--deployment-id", help="Deployment ID (for details)")
     parser.add_argument("--top", type=int, default=10, help="Max results to return")
     args = parser.parse_args()
+
+    require_provider("ado")
 
     if args.action == "list":
         list_deployments(args.customer, args.environment, args.status, args.top)

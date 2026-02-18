@@ -12,6 +12,7 @@ Usage:
     python3 scripts/bootstrap.py set-default <provider> <name>
     python3 scripts/bootstrap.py list-connections
     python3 scripts/bootstrap.py init-workspace [--environment-url ...] [--jira ...] [--ado ...] [--dataverse ...]
+    python3 scripts/bootstrap.py init-ticket <ticket-id>
 """
 
 import argparse
@@ -73,16 +74,16 @@ def cmd_setup(_args: argparse.Namespace) -> None:
     print(str(venv_python))
 
 
-def cmd_status(_args: argparse.Namespace) -> None:
+def cmd_status(args: argparse.Namespace) -> None:
     """Check all providers and print readiness report."""
     statuses = check_all()
-    print_status(statuses)
+    print_status(statuses, fmt=getattr(args, "format", "text"))
 
 
 def cmd_check(args: argparse.Namespace) -> None:
     """Check a single provider."""
     status = check_provider(args.provider)
-    print_status({args.provider: status})
+    print_status({args.provider: status}, fmt=getattr(args, "format", "text"))
     if not status.ready:
         sys.exit(1)
 
@@ -198,6 +199,47 @@ def cmd_init_workspace(args: argparse.Namespace) -> None:
     print(json.dumps(ws, indent=2))
 
 
+def cmd_init_ticket(args: argparse.Namespace) -> None:
+    """Scaffold the workspace for a new ticket investigation."""
+    ticket_id = args.ticket_id
+
+    # 1. Check provider status
+    print("=== Checking providers ===\n", file=sys.stderr)
+    statuses = check_all()
+    print_status(statuses)
+
+    # 2. Check / create workspace config
+    ws = load_workspace()
+    ws_path = Path.cwd() / "ops" / "opskit.json"
+    if not ws.get("environment_url"):
+        env_url = _prompt("Environment URL (e.g. https://orgname.crm4.dynamics.com)")
+        if env_url:
+            ws["environment_url"] = env_url.rstrip("/")
+            save_workspace(ws)
+            print(f"Workspace config written to {ws_path}", file=sys.stderr)
+        else:
+            print("Skipping workspace config (no environment URL provided).", file=sys.stderr)
+    else:
+        print(f"Workspace config: {ws_path}", file=sys.stderr)
+        print(f"  Environment URL: {ws['environment_url']}", file=sys.stderr)
+
+    # 3. Create ticket directory structure
+    ticket_dir = Path.cwd() / "ops" / ticket_id
+    for subdir in ["artifacts/logs", "artifacts/data"]:
+        (ticket_dir / subdir).mkdir(parents=True, exist_ok=True)
+    print(f"\nTicket directory created: {ticket_dir}", file=sys.stderr)
+
+    # 4. Summary
+    ready = [name for name, s in statuses.items() if s.ready]
+    not_ready = [name for name, s in statuses.items() if not s.ready]
+    print(f"\n=== Ready ===", file=sys.stderr)
+    print(f"  Providers: {', '.join(ready) if ready else 'none'}", file=sys.stderr)
+    if not_ready:
+        print(f"  Not configured: {', '.join(not_ready)}", file=sys.stderr)
+    print(f"  Ticket dir: ops/{ticket_id}/", file=sys.stderr)
+    print(f"\nNext: fetch the ticket and start investigating.", file=sys.stderr)
+
+
 # ---------------------------------------------------------------------------
 # Non-interactive builders (return dict if all required flags present, else None)
 # ---------------------------------------------------------------------------
@@ -304,10 +346,13 @@ def main() -> None:
     sub.required = True
 
     sub.add_parser("setup", help="Create venv and install dependencies")
-    sub.add_parser("status", help="Check all providers and print readiness report")
+
+    p_status = sub.add_parser("status", help="Check all providers and print readiness report")
+    p_status.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_check = sub.add_parser("check", help="Check a single provider")
     p_check.add_argument("provider", choices=["jira", "ado", "dataverse"])
+    p_check.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_add = sub.add_parser("add-connection", help="Add a named connection")
     p_add.add_argument("provider", choices=["jira", "ado", "dataverse"])
@@ -335,6 +380,9 @@ def main() -> None:
     p_ws.add_argument("--ado", help="ADO connection name")
     p_ws.add_argument("--dataverse", help="Dataverse connection name")
 
+    p_ticket = sub.add_parser("init-ticket", help="Scaffold workspace for a ticket investigation")
+    p_ticket.add_argument("ticket_id", help="Ticket ID (e.g. CASE-1234)")
+
     args = parser.parse_args()
 
     dispatch = {
@@ -346,6 +394,7 @@ def main() -> None:
         "set-default": cmd_set_default,
         "list-connections": cmd_list_connections,
         "init-workspace": cmd_init_workspace,
+        "init-ticket": cmd_init_ticket,
     }
     dispatch[args.command](args)
 
